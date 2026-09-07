@@ -21,6 +21,14 @@ jobs:
           cache: pip
       - run: pip install -r requirements-dev.txt
 
+      - name: Fetch the corpus
+        run: python -m scripts.fetch_corpus
+
+      - name: Check the golden set against the corpus
+        # Grounds every expected answer in real document text, so the metrics
+        # below are not graded against remembered facts.
+        run: pytest -m corpus
+
       - name: Run the golden set
         env:
           LLM_API_KEY: ${{ secrets.LLM_API_KEY }}

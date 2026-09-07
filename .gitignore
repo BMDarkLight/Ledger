@@ -181,5 +181,4 @@ cython_debug/
 .cursorindexingignore
 # --- Ledger ---
 # Corpus documents are fetched, not vendored (see corpus/README.md).
-corpus/*.html
-corpus/*.txt
+corpus/*.rst

@@ -26,6 +26,16 @@ def mean_or_none(values: list[float | None]) -> float | None:
     return sum(usable) / len(usable) if usable else None
 
 
+def _why(result: "CaseResult") -> str:
+    if result.error:
+        return result.error
+    if not result.routed_correctly:
+        return "wrong route"
+    if result.behaved_correctly is False:
+        return "wrong behavior"
+    return "wrong tool"
+
+
 def _pct(value: float | None) -> str:
     """A metric nobody measured is reported as such, never as a zero."""
     return f"{value:.1%}" if value is not None else "_not measured_"
@@ -36,7 +46,18 @@ class CaseResult:
     case_id: str
     category: str
     routed_correctly: bool
-    behaved_correctly: bool
+
+    behaved_correctly: bool | None = None
+    """None when this run could not observe the behavior at all.
+
+    Most refusals are decided by the receipts gate, not the router, so a
+    routing-only run cannot see them. Scoring those as passes would report a
+    refusal accuracy that no refusal produced.
+    """
+
+    tool_choice_correct: bool | None = None
+    """None when the case expects no tool and none was chosen."""
+
     recall: float | None = None
     citation_coverage: float | None = None
     substrings_hit: float | None = None
@@ -56,9 +77,26 @@ class Scorecard:
         return mean([1.0 if r.routed_correctly else 0.0 for r in self.results])
 
     @property
-    def refusal_accuracy(self) -> float:
-        graded = [r for r in self.results if r.category == "adversarial"]
-        return mean([1.0 if r.behaved_correctly else 0.0 for r in graded])
+    def refusal_accuracy(self) -> float | None:
+        graded = [
+            r
+            for r in self.results
+            if r.category == "adversarial" and r.behaved_correctly is not None
+        ]
+        return mean_or_none([1.0 if r.behaved_correctly else 0.0 for r in graded])
+
+    @property
+    def refusals_exercised(self) -> tuple[int, int]:
+        """(observed, total) adversarial cases — the caveat next to the accuracy."""
+        adversarial = [r for r in self.results if r.category == "adversarial"]
+        observed = [r for r in adversarial if r.behaved_correctly is not None]
+        return len(observed), len(adversarial)
+
+    @property
+    def tool_accuracy(self) -> float | None:
+        """Did the router pick the right tool, not merely the right route."""
+        graded = [r for r in self.results if r.tool_choice_correct is not None]
+        return mean_or_none([1.0 if r.tool_choice_correct else 0.0 for r in graded])
 
     @property
     def recall(self) -> float | None:
@@ -75,6 +113,7 @@ class Scorecard:
         return {k: mean(v) for k, v in sorted(buckets.items())}
 
     def to_markdown(self, header: str = "") -> str:
+        observed, total = self.refusals_exercised
         lines = [
             "# Ledger scorecard",
             "",
@@ -84,7 +123,9 @@ class Scorecard:
             "|---|---|",
             f"| Cases run | {self.cases_run} |",
             f"| Routing accuracy | {self.routing_accuracy:.1%} |",
-            f"| Refusal accuracy (adversarial) | {self.refusal_accuracy:.1%} |",
+            f"| Refusal accuracy (adversarial) | {_pct(self.refusal_accuracy)}"
+            f" · {observed}/{total} cases observed |",
+            f"| Tool selection accuracy | {_pct(self.tool_accuracy)} |",
             f"| Retrieval recall@k | {_pct(self.recall)} |",
             f"| Citation coverage | {_pct(self.citation_coverage)} |",
             "",
@@ -94,12 +135,14 @@ class Scorecard:
             "|---|---|",
         ]
         lines += [f"| `{k}` | {v:.1%} |" for k, v in self.by_category().items()]
-        failures = [r for r in self.results if not r.routed_correctly or not r.behaved_correctly]
+        failures = [
+            r
+            for r in self.results
+            if not r.routed_correctly
+            or r.behaved_correctly is False
+            or r.tool_choice_correct is False
+        ]
         if failures:
             lines += ["", "## Failing cases", "", "| Case | Category | Why |", "|---|---|---|"]
-            lines += [
-                f"| `{r.case_id}` | {r.category} | "
-                f"{r.error or ('wrong route' if not r.routed_correctly else 'wrong behavior')} |"
-                for r in failures
-            ]
+            lines += [f"| `{r.case_id}` | {r.category} | {_why(r)} |" for r in failures]
         return "\n".join(lines) + "\n"

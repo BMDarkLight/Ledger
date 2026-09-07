@@ -46,3 +46,39 @@ def test_unmeasured_metrics_are_not_reported_as_zero():
     )
     assert card.recall is None
     assert "_not measured_" in card.to_markdown()
+
+
+def test_unobserved_refusals_are_excluded_not_counted_as_passes():
+    """The bug this guards: 100% refusal accuracy with zero refusals observed.
+
+    Most adversarial cases are refused by the receipts gate, which a routing-only
+    run never reaches. Those must not be scored at all.
+    """
+    card = Scorecard(
+        results=[
+            CaseResult("A001", "adversarial", routed_correctly=True, behaved_correctly=None),
+            CaseResult("A004", "adversarial", routed_correctly=True, behaved_correctly=True),
+        ]
+    )
+    assert card.refusals_exercised == (1, 2)
+    assert card.refusal_accuracy == 1.0
+    assert "1/2 cases observed" in card.to_markdown()
+
+
+def test_refusal_accuracy_is_unmeasured_when_nothing_was_observed():
+    card = Scorecard(
+        results=[CaseResult("A001", "adversarial", routed_correctly=True, behaved_correctly=None)]
+    )
+    assert card.refusal_accuracy is None
+
+
+def test_tool_choice_failures_are_visible_even_when_the_route_is_right():
+    card = Scorecard(
+        results=[
+            CaseResult("T006", "tool", routed_correctly=True, tool_choice_correct=False),
+            CaseResult("T002", "tool", routed_correctly=True, tool_choice_correct=True),
+        ]
+    )
+    assert card.routing_accuracy == 1.0, "routing alone would call this a clean sweep"
+    assert card.tool_accuracy == 0.5
+    assert "T006" in card.to_markdown()

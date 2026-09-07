@@ -6,8 +6,13 @@ requires-python = ">=3.10"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-q"
+# Corpus tests need documents fetched from the network, so they are opt-in:
+#   python -m scripts.fetch_corpus && pytest -m corpus
+addopts = "-q -m 'not corpus'"
 asyncio_mode = "auto"
+markers = [
+    "corpus: requires the fetched corpus on disk (see scripts/fetch_corpus.py)",
+]
 
 [tool.ruff]
 line-length = 100

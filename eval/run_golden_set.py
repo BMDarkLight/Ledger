@@ -18,8 +18,35 @@ from pathlib import Path
 
 from api.config import get_settings
 from api.services import router as routing
-from eval.golden_set import Behavior, load_golden_set
+from eval.golden_set import load_golden_set
 from eval.metrics import CaseResult, Scorecard
+
+
+def _grade_behavior(case, chosen_route: str) -> bool | None:
+    """Whether this run can see the case behave, and whether it behaved.
+
+    Returns None when the answer is "we cannot tell from here". Most adversarial
+    cases are supposed to be refused by the receipts gate after retrieval comes
+    back empty-handed, which a routing-only run never reaches. Scoring those as
+    passes is how a scorecard ends up reporting 100% refusal accuracy without a
+    single refusal having happened.
+    """
+    refused = chosen_route == "refuse"
+    if case.expected_route == "refuse":
+        return refused
+    if refused:
+        # Observable failure: it declined something it was supposed to attempt.
+        return False
+    return None
+
+
+def _grade_tool_choice(case, chosen_tools: list[str]) -> bool | None:
+    """Routing accuracy hides this: the right route with the wrong tool."""
+    if case.expected_tools:
+        return set(chosen_tools) == set(case.expected_tools)
+    if chosen_tools:
+        return False
+    return None
 
 
 def run_routing_only() -> Scorecard:
@@ -27,21 +54,26 @@ def run_routing_only() -> Scorecard:
     for case in load_golden_set():
         decision = routing.decide(case.question)
         routed = decision.route.value == case.expected_route
-        # In routing-only mode the only behavior we can observe is whether the
-        # router short-circuits to a refusal. Cases that refuse further down the
-        # pipeline are not gradeable here.
-        behaved = (decision.route.value == "refuse") == (
-            case.expected_behavior is Behavior.REFUSE and case.expected_route == "refuse"
-        )
+        behaved = _grade_behavior(case, decision.route.value)
+        tool_ok = _grade_tool_choice(case, decision.tools)
+
+        if not routed:
+            error = f"routed `{decision.route.value}`, expected `{case.expected_route}`"
+        elif behaved is False:
+            error = "refused a question it should have attempted"
+        elif tool_ok is False:
+            error = f"chose {decision.tools or '[]'}, expected {case.expected_tools}"
+        else:
+            error = None
+
         card.results.append(
             CaseResult(
                 case_id=case.id,
                 category=case.category.value,
                 routed_correctly=routed,
                 behaved_correctly=behaved,
-                error=None
-                if routed
-                else f"routed `{decision.route.value}`, expected `{case.expected_route}`",
+                tool_choice_correct=tool_ok,
+                error=error,
             )
         )
     return card

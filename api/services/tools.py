@@ -9,7 +9,7 @@ import ast
 import operator
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 
 from api.config import Settings
 from api.schemas import Receipt, ReceiptKind, ToolSpec
@@ -66,7 +66,7 @@ def calculator(expression: str, settings: Settings) -> str:
 
 def clock(_: str, settings: Settings) -> str:
     """The current UTC date and time, so 'today' questions have a real source."""
-    return datetime.now(UTC).isoformat(timespec="seconds")
+    return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
 # --- stubs ----------------------------------------------------------------

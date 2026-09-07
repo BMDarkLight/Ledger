@@ -13,7 +13,7 @@ Usage:
 
 import argparse
 import sys
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 from api.config import get_settings
@@ -75,7 +75,7 @@ def main(argv: list[str] | None = None) -> int:
         card = run_full()
         mode = "full pipeline"
 
-    stamp = datetime.now(UTC).strftime("%Y-%m-%d %H:%M UTC")
+    stamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
     header = f"_Mode: {mode} · generated {stamp} by `python -m eval.run_golden_set`._"
     args.out.write_text(card.to_markdown(header), encoding="utf-8")
 

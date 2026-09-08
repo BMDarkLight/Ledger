@@ -8,10 +8,11 @@ requires-python = ">=3.10"
 testpaths = ["tests"]
 # Corpus tests need documents fetched from the network, so they are opt-in:
 #   python -m scripts.fetch_corpus && pytest -m corpus
-addopts = "-q -m 'not corpus'"
+addopts = "-q -m 'not corpus and not retrieval'"
 asyncio_mode = "auto"
 markers = [
     "corpus: requires the fetched corpus on disk (see scripts/fetch_corpus.py)",
+    "retrieval: also requires local ONNX models, downloaded on first run",
 ]
 
 [tool.ruff]

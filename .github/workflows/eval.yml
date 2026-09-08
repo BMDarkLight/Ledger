@@ -29,9 +29,27 @@ jobs:
         # below are not graded against remembered facts.
         run: pytest -m corpus
 
+      # fastembed defaults to a temp directory, which a cache action cannot
+      # find, so the location is pinned explicitly via MODEL_CACHE_DIR below.
+      - name: Cache embedding models
+        uses: actions/cache@v4
+        with:
+          path: .models
+          key: fastembed-${{ hashFiles('requirements.txt') }}
+
+      - name: Retrieval integration tests
+        env:
+          QDRANT_URL: ":memory:"
+          MODEL_CACHE_DIR: .models
+        run: pytest -m retrieval
+
       - name: Run the golden set
         env:
           LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
+          # In-process vector store: no service container, no secrets, so the
+          # retrieval numbers below are produced on every pull request.
+          QDRANT_URL: ":memory:"
+          MODEL_CACHE_DIR: .models
         run: python -m eval.run_golden_set
 
       - name: Publish the scorecard to the job summary

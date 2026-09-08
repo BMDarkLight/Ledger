@@ -59,6 +59,12 @@ class CaseResult:
     """None when the case expects no tool and none was chosen."""
 
     recall: float | None = None
+    """Expected documents present in the dense top-k, before reranking."""
+
+    recall_after_rerank: float | None = None
+    """Same, after the cross-encoder cut it to top-n. A drop here means the
+    reranker threw away a document the vector search had already found."""
+
     citation_coverage: float | None = None
     substrings_hit: float | None = None
     error: str | None = None
@@ -103,6 +109,10 @@ class Scorecard:
         return mean_or_none([r.recall for r in self.results])
 
     @property
+    def recall_after_rerank(self) -> float | None:
+        return mean_or_none([r.recall_after_rerank for r in self.results])
+
+    @property
     def citation_coverage(self) -> float | None:
         return mean_or_none([r.citation_coverage for r in self.results])
 
@@ -126,7 +136,8 @@ class Scorecard:
             f"| Refusal accuracy (adversarial) | {_pct(self.refusal_accuracy)}"
             f" · {observed}/{total} cases observed |",
             f"| Tool selection accuracy | {_pct(self.tool_accuracy)} |",
-            f"| Retrieval recall@k | {_pct(self.recall)} |",
+            f"| Retrieval recall@k (dense) | {_pct(self.recall)} |",
+            f"| Recall after rerank | {_pct(self.recall_after_rerank)} |",
             f"| Citation coverage | {_pct(self.citation_coverage)} |",
             "",
             "## Routing accuracy by category",

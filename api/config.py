@@ -13,9 +13,10 @@ class Settings(BaseSettings):
     llm_base_url: str = "https://api.openai.com/v1"
     llm_model: str = "gpt-4o-mini"
 
-    # Embeddings
-    embedding_model: str = "text-embedding-3-small"
-    embedding_dim: int = 1536
+    # Embeddings — fastembed runs these locally via ONNX: no key, no torch,
+    # which is what lets CI grade retrieval on every pull request.
+    embedding_model: str = "BAAI/bge-small-en-v1.5"
+    embedding_dim: int = 384
 
     # Qdrant
     qdrant_url: str = "http://localhost:6333"
@@ -25,7 +26,11 @@ class Settings(BaseSettings):
     # Retrieval
     retrieval_top_k: int = 10
     rerank_top_n: int = 4
-    rerank_model: str = "cross-encoder/ms-marco-MiniLM-L-6-v2"
+    rerank_model: str = "Xenova/ms-marco-MiniLM-L-6-v2"
+
+    model_cache_dir: str = ""
+    """Where ONNX model files are stored. Empty means fastembed's default, which
+    is a temp directory — fine locally, useless to a CI cache, so CI sets this."""
 
     # Tools
     web_search_api_key: str = ""
@@ -36,6 +41,10 @@ class Settings(BaseSettings):
     @property
     def llm_configured(self) -> bool:
         return bool(self.llm_api_key)
+
+    @property
+    def qdrant_in_memory(self) -> bool:
+        return self.qdrant_url == ":memory:"
 
 
 @lru_cache

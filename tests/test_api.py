@@ -22,10 +22,20 @@ def test_route_endpoint_returns_a_rationale(client):
     assert body["rationale"], "a routing decision without a rationale is a black box"
 
 
-def test_unimplemented_pipeline_reports_501_rather_than_guessing(client):
-    """Until Phase 1 lands, /v1/ask must fail loudly — never fall back to a guess."""
-    response = client.post("/v1/ask", json={"question": "Who wrote PEP 8?"})
-    assert response.status_code == 501
+def test_unreachable_store_reports_503_rather_than_guessing(unreachable_store):
+    """No evidence available must surface as itself, never as a degraded answer."""
+    response = unreachable_store.post("/v1/ask", json={"question": "Who wrote PEP 8?"})
+    assert response.status_code == 503
+    assert "unreachable" in response.json()["detail"].lower()
+
+
+def test_openai_surface_fails_the_same_way(unreachable_store):
+    """A client pointed at Ledger must not get a confident answer where /v1/ask refuses."""
+    response = unreachable_store.post(
+        "/v1/chat/completions",
+        json={"messages": [{"role": "user", "content": "Who wrote PEP 8?"}]},
+    )
+    assert response.status_code == 503
 
 
 def test_refusal_route_answers_without_touching_the_pipeline(client):

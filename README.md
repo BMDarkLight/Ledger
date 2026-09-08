@@ -147,8 +147,15 @@ cd Ledger
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 cp .env.example .env    # set LLM_API_KEY, QDRANT_URL
+
+python -m scripts.fetch_corpus    # pull the PEP corpus
+python -m scripts.ingest_corpus   # chunk, embed and index it
+
 uvicorn api.main:app --reload
 ```
+
+No Qdrant server handy? Set `QDRANT_URL=":memory:"` to run the store in-process.
+Embeddings are local either way — retrieval needs no API key, only synthesis does.
 
 - Docs: `http://localhost:8000/docs`
 - Health: `http://localhost:8000/health`
@@ -159,25 +166,43 @@ uvicorn api.main:app --reload
 
 ```bash
 pip install -r requirements-dev.txt
-pytest                            # unit tests, no API key needed
-python -m eval.run_golden_set     # eval harness — grades the router with no API key,
-                                  # runs the full pipeline once LLM_API_KEY is set
+pytest                            # unit tests, no corpus or API key needed
+
+python -m scripts.fetch_corpus
+pytest -m corpus                  # every expected answer checked against real PEP text
+pytest -m retrieval               # end-to-end retrieval, downloads ONNX models once
+
+python -m eval.run_golden_set     # eval harness
 ```
 
-Without `LLM_API_KEY` the harness runs in **routing-only** mode: it grades the
-deterministic baseline router against all 31 golden cases and writes
-`eval/scorecard.md`. That is the floor the Phase-2 LLM router has to beat.
+The harness picks the richest mode the environment supports and writes
+`eval/scorecard.md`:
+
+| Mode | Needs | Measures |
+|---|---|---|
+| `routing` | nothing | routing, tool selection |
+| `retrieval` | the corpus on disk | the above, plus recall@k before and after reranking |
+| `full` | `LLM_API_KEY` | the above, plus citation coverage and faithfulness |
+
+Embeddings run locally, so CI reaches `retrieval` mode with no secrets — the
+retrieval numbers are produced on every pull request, not just on `main`.
 
 ---
 
 ## Tech stack
 
 - **FastAPI** + **Uvicorn** — HTTP surface, OpenAPI docs
-- **LangChain** — retrieval and tool orchestration
-- **Qdrant** — vector store
+- **Qdrant** — vector store, with an in-process mode for tests and CI
+- **fastembed** — local ONNX embeddings and cross-encoder reranking: no API key,
+  no torch, so CI can grade retrieval on every pull request
 - **Pydantic v2** — schemas and configuration
 - **pytest** + **ragas** (or an LLM-judge script) — testing and faithfulness scoring
 - **Docker** — packaging
+
+Retrieval is written directly against `qdrant-client` rather than through an
+orchestration framework. Receipts depend on an exact chunk-to-citation-tag
+mapping, and owning that code outright is simpler than configuring a framework
+to preserve it.
 
 ---
 

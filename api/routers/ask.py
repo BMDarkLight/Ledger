@@ -14,6 +14,7 @@ from api.schemas import (
 from api.services import receipts as receipts_service
 from api.services import retrieval, synthesis, tools
 from api.services import router as routing
+from api.services.retrieval import RetrievalUnavailable
 
 router = APIRouter(prefix="/v1", tags=["ask"])
 
@@ -71,18 +72,26 @@ def _run_pipeline(request: AskRequest, settings: Settings) -> ReceiptedAskRespon
     )
 
 
-@router.post("/ask", response_model=AskResponse)
-def ask(request: AskRequest, settings: SettingsDep) -> AskResponse:
+def _guarded(request: AskRequest, settings: Settings) -> ReceiptedAskResponse:
+    """Run the pipeline, translating the two ways it can legitimately not answer.
+
+    Both are deliberate: an unbuilt stage and an unreachable store must surface
+    as themselves, never as a degraded answer.
+    """
     try:
-        result = _run_pipeline(request, settings)
+        return _run_pipeline(request, settings)
+    except RetrievalUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
     except NotImplementedError as exc:
         raise HTTPException(status_code=501, detail=str(exc)) from exc
+
+
+@router.post("/ask", response_model=AskResponse)
+def ask(request: AskRequest, settings: SettingsDep) -> AskResponse:
+    result = _guarded(request, settings)
     return AskResponse(**result.model_dump(exclude={"claims"}))
 
 
 @router.post("/ask/receipts", response_model=ReceiptedAskResponse)
 def ask_with_receipts(request: AskRequest, settings: SettingsDep) -> ReceiptedAskResponse:
-    try:
-        return _run_pipeline(request, settings)
-    except NotImplementedError as exc:
-        raise HTTPException(status_code=501, detail=str(exc)) from exc
+    return _guarded(request, settings)

@@ -182,3 +182,4 @@ cython_debug/
 # --- Ledger ---
 # Corpus documents are fetched, not vendored (see corpus/README.md).
 corpus/*.rst
+.models

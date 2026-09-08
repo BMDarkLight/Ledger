@@ -13,7 +13,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from api.deps import SettingsDep
-from api.routers.ask import _run_pipeline
+from api.routers.ask import _guarded
 from api.schemas import AskRequest
 
 router = APIRouter(prefix="/v1", tags=["openai-compatible"])
@@ -43,10 +43,7 @@ def chat_completions(request: ChatCompletionRequest, settings: SettingsDep) -> d
     if request.stream:
         raise HTTPException(status_code=501, detail="Phase 5: SSE streaming.")
 
-    try:
-        result = _run_pipeline(AskRequest(question=question), settings)
-    except NotImplementedError as exc:
-        raise HTTPException(status_code=501, detail=str(exc)) from exc
+    result = _guarded(AskRequest(question=question), settings)
 
     return {
         "id": f"chatcmpl-{uuid.uuid4().hex[:24]}",

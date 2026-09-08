@@ -1,6 +1,6 @@
 # Ledger scorecard
 
-_Mode: routing-only (deterministic baseline router, no LLM calls). Read this number with suspicion: the baseline's patterns were written against these same questions, so it is fitted to them and its score is an upper bound, not a generalization estimate. · generated 2026-09-07 22:59 UTC by `python -m eval.run_golden_set`._
+_Mode: retrieval (local ONNX embeddings, no LLM calls). Routing numbers carry the same fitted-baseline caveat as routing-only mode. Citation coverage still needs synthesis, so it stays unmeasured here. · generated 2026-09-08 19:21 UTC by `python -m eval.run_golden_set`._
 
 | Metric | Score |
 |---|---|
@@ -8,7 +8,8 @@ _Mode: routing-only (deterministic baseline router, no LLM calls). Read this num
 | Routing accuracy | 96.8% |
 | Refusal accuracy (adversarial) | 100.0% · 2/8 cases observed |
 | Tool selection accuracy | 71.4% |
-| Retrieval recall@k | _not measured_ |
+| Retrieval recall@k (dense) | 76.5% |
+| Recall after rerank | 76.5% |
 | Citation coverage | _not measured_ |
 
 ## Routing accuracy by category

@@ -1,6 +1,6 @@
 # Ledger scorecard
 
-_Mode: retrieval (local ONNX embeddings, no LLM calls). Routing numbers carry the same fitted-baseline caveat as routing-only mode. Citation coverage still needs synthesis, so it stays unmeasured here. Generated 2026-09-23 14:27 UTC by `python -m eval.run_golden_set`._
+_Mode: retrieval (local ONNX embeddings, no LLM calls). Routing numbers carry the same fitted-baseline caveat as routing-only mode. Citation coverage still needs synthesis, so it stays unmeasured here. Generated 2026-09-23 14:44 UTC by `python -m eval.run_golden_set`._
 
 | Metric | Score |
 |---|---|

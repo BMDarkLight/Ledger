@@ -22,7 +22,7 @@ def ingest_corpus(settings: Settings, verbose: bool = False) -> int:
     missing = [d for d in referenced_pep_ids() if not corpus_path(d).exists()]
     if missing:
         raise FileNotFoundError(
-            f"{len(missing)} corpus document(s) not fetched: {', '.join(missing)} — "
+            f"{len(missing)} corpus document(s) not fetched: {', '.join(missing)}. "
             "run `python -m scripts.fetch_corpus`"
         )
 
@@ -31,7 +31,7 @@ def ingest_corpus(settings: Settings, verbose: bool = False) -> int:
         count = index_document(doc_id, load_document(doc_id), {"corpus": "peps"}, settings)
         total += count
         if verbose:
-            print(f"· {doc_id}: {count} chunks")
+            print(f"  {doc_id}: {count} chunks")
     return total
 
 

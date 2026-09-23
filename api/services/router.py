@@ -1,8 +1,8 @@
-"""Routing: retrieve, call a tool, or chain both — and always say why.
+"""Routing: retrieve, call a tool, or chain both, and always say why.
 
 This is the deterministic Phase-1 baseline. It runs with no API key, which makes
 it the floor that the Phase-2 LLM router has to beat on the golden set. Replace
-`decide()` with the model-backed version; keep the rationale contract.
+`decide()` with the model-backed version and keep the rationale contract.
 """
 
 import re
@@ -65,8 +65,8 @@ def decide(question: str) -> RouteDecision:
     wants_computation = bool(_ARITHMETIC.search(q))
     wants_live = _has_live_marker(q)
 
-    # A live/computed question that also names something the corpus knows about
-    # needs both, in sequence: look the fact up, then compute or check against it.
+    # A live or computed question that also names something the corpus knows
+    # about needs both, in sequence: look the fact up, then compute against it.
     if (wants_computation or wants_live) and _mentions_corpus_subject(q):
         tools = ["calculator"] if wants_computation else ["web_search"]
         if "today" in q or "current date" in q:
@@ -75,8 +75,8 @@ def decide(question: str) -> RouteDecision:
             route=Route.RETRIEVE_THEN_TOOL,
             rationale=(
                 "The question names a subject the corpus covers but resolves to a value "
-                "that must be computed or looked up live — retrieve the fact first, then "
-                "chain the tool."
+                "that must be computed or looked up live, so retrieve the fact first and "
+                "chain the tool onto it."
             ),
             tools=tools,
             confidence=0.55,
@@ -85,7 +85,7 @@ def decide(question: str) -> RouteDecision:
     if wants_computation:
         return RouteDecision(
             route=Route.TOOL,
-            rationale="Pure computation — no document contains this; the calculator does.",
+            rationale="Pure computation. No document contains this; the calculator does.",
             tools=["calculator"],
             confidence=0.7,
         )
@@ -101,7 +101,7 @@ def decide(question: str) -> RouteDecision:
 
     return RouteDecision(
         route=Route.RETRIEVE,
-        rationale="A static factual question — the corpus is the right place to look.",
+        rationale="A static factual question, so the corpus is the right place to look.",
         tools=[],
         confidence=0.6,
     )

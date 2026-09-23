@@ -1,4 +1,4 @@
-"""The deterministic baseline router — the floor Phase 2 has to beat."""
+"""The deterministic baseline router, the floor Phase 2 has to beat."""
 
 import pytest
 

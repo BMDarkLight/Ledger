@@ -9,8 +9,8 @@ jobs:
   pytest:
     runs-on: ubuntu-latest
     strategy:
-      # Without this a 3.10 failure cancels 3.12, hiding whether the break is
-      # version-specific — which is exactly what you need to know.
+      # Without this a 3.10 failure cancels 3.12, which hides whether the
+      # break is version-specific.
       fail-fast: false
       matrix:
         python-version: ["3.10", "3.12"]

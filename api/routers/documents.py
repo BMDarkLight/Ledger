@@ -1,4 +1,4 @@
-"""`POST /v1/documents` — ingestion into the vector store."""
+"""`POST /v1/documents`: ingestion into the vector store."""
 
 from fastapi import APIRouter, HTTPException
 

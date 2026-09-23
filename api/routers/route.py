@@ -1,4 +1,4 @@
-"""`POST /v1/route` — the routing decision on its own, no generation spent."""
+"""`POST /v1/route`: the routing decision on its own, with no generation spent."""
 
 from fastapi import APIRouter
 

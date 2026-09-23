@@ -1,4 +1,4 @@
-"""The one rule. These tests are the reason the receipts module is dependency-free."""
+"""The one rule. These tests are why the receipts module has no dependencies."""
 
 import pytest
 
@@ -7,7 +7,7 @@ from api.services import receipts
 
 
 def make_receipt(tag: str = "R1") -> Receipt:
-    return Receipt(tag=tag, kind=ReceiptKind.RETRIEVAL, source="pep-0008", snippet="…")
+    return Receipt(tag=tag, kind=ReceiptKind.RETRIEVAL, source="pep-0008", snippet="...")
 
 
 def test_tags_are_extracted_in_order_without_duplicates():
@@ -34,7 +34,7 @@ def test_only_load_bearing_sentences_need_receipts(sentence, factual):
 
 
 def test_a_claim_citing_an_unknown_tag_is_not_supported():
-    """A fabricated citation is worse than a missing one — it must not count."""
+    """A fabricated citation is worse than a missing one, so it must not count."""
     claims = receipts.extract_claims("PEP 8 was written in 2001 [R7].", [make_receipt("R1")])
     assert len(claims) == 1
     assert claims[0].supported is False

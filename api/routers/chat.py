@@ -1,4 +1,4 @@
-"""`POST /v1/chat/completions` — OpenAI-compatible surface.
+"""`POST /v1/chat/completions`: OpenAI-compatible surface.
 
 Existing clients point at Ledger unchanged. Receipts survive the translation:
 the tags stay inline in the message content, and the structured receipts ride

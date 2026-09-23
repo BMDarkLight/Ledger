@@ -1,9 +1,9 @@
 """Fetch the Phase 0 corpus (Python PEPs) into corpus/.
 
-PEPs are pulled as reStructuredText source rather than as rendered HTML: the
+PEPs are pulled as reStructuredText source rather than as rendered HTML. The
 source is a third the size, needs no tag stripping, and carries the metadata
 headers (Title, Author, Status, Created) as plain text at the top of the file,
-which is exactly what several golden-set questions ask about.
+which is what several golden-set questions ask about.
 
 Only the PEPs the golden set actually references are fetched, so the corpus and
 the eval set cannot drift apart.
@@ -62,10 +62,10 @@ def main(argv: list[str] | None = None) -> int:
         for doc_id in doc_ids:
             destination = corpus_path(doc_id)
             if destination.exists() and not args.force:
-                print(f"· {destination.name} (cached)")
+                print(f"  {destination.name} (cached)")
                 continue
             destination.write_text(fetch(doc_id, client), encoding="utf-8")
-            print(f"↓ {destination.name} ({destination.stat().st_size:,} bytes)")
+            print(f"  {destination.name} ({destination.stat().st_size:,} bytes)")
 
     print(f"\n{len(doc_ids)} documents in {CORPUS_DIR}")
     return 0

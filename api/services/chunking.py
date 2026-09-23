@@ -1,11 +1,11 @@
 """Splitting documents into the units that become retrieval receipts.
 
-Chunking is a retrieval-quality decision, not plumbing: a chunk is the smallest
-thing Ledger can cite, so a boundary in the wrong place either buries a fact
-among unrelated text or splits it away from the context that makes it findable.
+A chunk is the smallest thing Ledger can cite, so a boundary in the wrong place
+either buries a fact among unrelated text or splits it away from the context
+that makes it findable.
 
 The corpus is reStructuredText, which carries its own structure, so sections are
-respected rather than a fixed window being slid over the raw characters.
+respected instead of sliding a fixed window over the raw characters.
 """
 
 import re
@@ -103,8 +103,8 @@ def chunk_document(
     """Chunk a document, prefixing each chunk with its section for context.
 
     The section title is prepended to the embedded text because "Author" or
-    "Rationale" is often the only thing that disambiguates an otherwise generic
-    passage — and because it makes a retrieved receipt readable on its own.
+    "Rationale" is often the only thing that distinguishes an otherwise generic
+    passage, and because it makes a retrieved receipt readable on its own.
     """
     chunks: list[Chunk] = []
     for section, body in split_sections(text):

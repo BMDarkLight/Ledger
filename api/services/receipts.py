@@ -1,7 +1,7 @@
 """The one rule, in code: a claim without a receipt is not an answer.
 
-Everything here is pure and dependency-free on purpose — this is the part of the
-system that must stay testable without an API key, a vector store, or a network.
+Everything here is pure, with no dependency on an API key, a vector store or a
+network, so the rule stays testable in isolation from everything that can fail.
 """
 
 import re
@@ -11,8 +11,8 @@ from api.schemas import AnswerStatus, Claim, Receipt
 TAG_PATTERN = re.compile(r"\[([RT]\d+)\]")
 _SENTENCE_SPLIT = re.compile(r"(?<=[.!?])\s+(?=[A-Z0-9\"'(\[])")
 
-# Sentences that carry no factual load and so need no receipt. Kept deliberately
-# small: when in doubt a sentence counts as factual and must be cited.
+# Sentences that carry no factual load and so need no receipt. Kept short: when
+# in doubt a sentence counts as factual and has to be cited.
 _NON_FACTUAL_PREFIXES = (
     "here is",
     "here are",
@@ -52,8 +52,8 @@ def split_sentences(text: str) -> list[str]:
 def looks_factual(sentence: str) -> bool:
     """Whether a sentence asserts something that needs backing.
 
-    Heuristic and deliberately conservative: hedges and refusals are exempt,
-    everything else is on the hook for a receipt.
+    A conservative heuristic: hedges and refusals are exempt, everything else is
+    on the hook for a receipt.
     """
     bare = strip_tags(sentence).strip().lower()
     if len(bare.split()) < 3:
@@ -64,8 +64,8 @@ def looks_factual(sentence: str) -> bool:
 def extract_claims(answer: str, receipts: list[Receipt] | None = None) -> list[Claim]:
     """Decompose an answer into factual claims, resolving each one's receipts.
 
-    A tag that doesn't correspond to a real receipt does not count as support —
-    a fabricated citation is worse than a missing one.
+    A tag that does not correspond to a real receipt is dropped rather than
+    counted, since a fabricated citation is worse than a missing one.
     """
     known = {r.tag for r in (receipts or [])}
     claims: list[Claim] = []
@@ -91,7 +91,7 @@ def citation_coverage(claims: list[Claim]) -> float:
 
 
 def decide_status(claims: list[Claim], receipts: list[Receipt], floor: float) -> AnswerStatus:
-    """Verified, unverified, or refused — the gate every answer passes through."""
+    """Verified, unverified or refused: the gate every answer passes through."""
     if not receipts:
         return AnswerStatus.REFUSED
     return AnswerStatus.VERIFIED if citation_coverage(claims) >= floor else AnswerStatus.UNVERIFIED

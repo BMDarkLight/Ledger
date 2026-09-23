@@ -1,4 +1,4 @@
-"""Wire schemas. The receipt types here are the contract the whole system serves."""
+"""Wire schemas. The receipt types here are the contract the rest of the code serves."""
 
 from enum import Enum
 from typing import Any, Literal
@@ -37,7 +37,7 @@ class Receipt(BaseModel):
     tag: str = Field(description="Citation tag as it appears in the prose, e.g. 'R3' or 'T1'.")
     kind: ReceiptKind
     source: str = Field(description="Document id for retrieval, tool name for tool calls.")
-    snippet: str = Field(description="The evidence itself — the text or the tool's output.")
+    snippet: str = Field(description="The evidence itself: the text, or the tool's output.")
     score: float | None = Field(default=None, description="Rerank score, retrieval receipts only.")
     metadata: dict[str, Any] = Field(default_factory=dict)
 
@@ -52,7 +52,7 @@ class Claim(BaseModel):
 
 class RouteDecision(BaseModel):
     route: Route
-    rationale: str = Field(description="Why this route — always inspectable, never hidden.")
+    rationale: str = Field(description="Why this route. Always returned, never hidden.")
     tools: list[str] = Field(default_factory=list)
     confidence: float = Field(ge=0.0, le=1.0, default=0.0)
 
@@ -77,7 +77,7 @@ class AskResponse(BaseModel):
 
 
 class ReceiptedAskResponse(AskResponse):
-    """`/v1/ask/receipts` — the same answer, decomposed claim by claim."""
+    """`/v1/ask/receipts`: the same answer, decomposed claim by claim."""
 
     claims: list[Claim] = Field(default_factory=list)
 

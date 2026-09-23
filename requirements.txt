@@ -7,11 +7,11 @@ pydantic>=2.7,<3.0
 pydantic-settings>=2.3,<3.0
 
 # --- retrieval ---
-# Deliberately no LangChain: receipts require an exact chunk -> citation-tag
-# mapping, and owning the ~60 lines that do it is simpler than configuring a
-# framework to preserve it.
+# No LangChain here: receipts need an exact chunk to citation-tag mapping, and
+# owning the 60 lines that do it is simpler than configuring a framework to
+# preserve it.
 qdrant-client>=1.9,<2.0
-fastembed>=0.4,<1.0   # ONNX embeddings + cross-encoder rerank, no torch, no API key
+fastembed>=0.4,<1.0   # ONNX embeddings and reranking, no torch, no API key
 
 # --- LLM client ---
 openai>=1.30,<2.0

@@ -1,8 +1,8 @@
 """Loading and validating the golden set.
 
 The golden set is the spec. It exists before the pipeline, it is checked into
-the repo, and it is what CI grades against — so it gets a schema and a test of
-its own rather than being a loose data file.
+the repo, and it is what CI grades against, so it gets a schema and a test of
+its own instead of being a loose data file.
 """
 
 import json
@@ -19,13 +19,13 @@ class Category(str, Enum):
     """Answerable directly from the corpus."""
 
     TOOL = "tool"
-    """Needs a live tool — not in the corpus at all."""
+    """Needs a live tool. Not in the corpus at all."""
 
     MULTI_HOP = "multi_hop"
     """Needs retrieval, then a tool, chained."""
 
     ADVERSARIAL = "adversarial"
-    """Deliberately unanswerable, false-premise, or an instruction-override trap."""
+    """Unanswerable, false-premise, or an instruction-override trap."""
 
 
 class Behavior(str, Enum):
@@ -39,13 +39,13 @@ class Case(BaseModel):
     question: str = Field(min_length=1)
 
     expected_route: str = Field(
-        description="retrieve | tool | retrieve_then_tool | refuse — graded as routing accuracy."
+        description="retrieve, tool, retrieve_then_tool or refuse. Graded as routing accuracy."
     )
     expected_behavior: Behavior = Field(
         description="Whether a correct system answers or declines. Graded separately from routing."
     )
     expected_sources: list[str] = Field(
-        default_factory=list, description="Corpus doc ids that should surface — graded as recall@k."
+        default_factory=list, description="Corpus doc ids that should surface. Graded as recall@k."
     )
     expected_tools: list[str] = Field(default_factory=list)
     answer_contains: list[str] = Field(

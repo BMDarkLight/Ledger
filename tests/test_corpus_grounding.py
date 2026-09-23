@@ -20,7 +20,7 @@ pytestmark = pytest.mark.corpus
 def _require_corpus() -> None:
     missing = [d for d in referenced_pep_ids() if not corpus_path(d).exists()]
     if missing:
-        pytest.skip(f"corpus not fetched ({len(missing)} missing) — run scripts.fetch_corpus")
+        pytest.skip(f"corpus not fetched ({len(missing)} missing). Run scripts.fetch_corpus")
 
 
 @pytest.fixture(autouse=True)
@@ -51,8 +51,8 @@ def test_corpus_backed_answers_actually_appear_in_the_corpus():
     """The core check: an expectation that no document supports is not ground truth.
 
     Only applies to cases that expect no tool. A case that calls a tool has a
-    *derived* expected answer — `100 - 79 = 21` is correct precisely because it
-    is nowhere in PEP 8 — so grounding it in document text would be wrong.
+    derived expected answer: `100 - 79 = 21` is correct precisely because it is
+    nowhere in PEP 8, so grounding it in document text would be wrong.
     """
     unfounded = []
     for case in load_golden_set():
@@ -69,8 +69,8 @@ def test_corpus_backed_answers_actually_appear_in_the_corpus():
 
 
 def test_tool_and_multi_hop_answers_are_derived_not_quoted():
-    """The converse. If a computed answer is already sitting in a document,
-    the case is not testing a tool call — it is testing retrieval by accident."""
+    """The converse. A computed answer already sitting in a document means the
+    case tests retrieval by accident rather than the tool call."""
     for case in load_golden_set():
         if case.category not in (Category.TOOL, Category.MULTI_HOP):
             continue
@@ -79,6 +79,6 @@ def test_tool_and_multi_hop_answers_are_derived_not_quoted():
         haystack = "\n".join(load_document(d) for d in case.expected_sources).lower()
         for needle in case.answer_contains:
             assert needle.lower() not in haystack, (
-                f"{case.id} expects {needle!r}, which is already in {case.expected_sources} — "
+                f"{case.id} expects {needle!r}, which is already in {case.expected_sources}. "
                 "the tool call is not actually required"
             )

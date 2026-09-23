@@ -1,10 +1,9 @@
-"""Qdrant search + cross-encoder rerank, producing R-tagged receipts.
+"""Qdrant search and cross-encoder rerank, producing R-tagged receipts.
 
 Embeddings run locally through fastembed (ONNX, no torch, no API key), and the
 vector store speaks the same client whether it is a real Qdrant or an in-process
-one. That combination is deliberate: it is what lets CI grade retrieval on every
-pull request without a secret, which is the only way the scorecard in the README
-can stay honest.
+one. Together that lets CI grade retrieval on every pull request without a
+secret, so the scorecard in the README is regenerated rather than remembered.
 """
 
 import uuid
@@ -15,11 +14,11 @@ from api.config import Settings
 from api.schemas import Receipt, ReceiptKind
 from api.services.chunking import chunk_document
 
-if TYPE_CHECKING:  # pragma: no cover - import cost is the whole point of deferring
+if TYPE_CHECKING:  # pragma: no cover - deferred to keep the import cheap
     from qdrant_client import QdrantClient
 
 IN_MEMORY = ":memory:"
-"""QDRANT_URL value that runs the store in-process — used by tests and CI."""
+"""QDRANT_URL value that runs the store in-process, as tests and CI do."""
 
 _NAMESPACE = uuid.UUID("6ba7b811-9dad-11d1-80b4-00c04fd430c8")
 
@@ -120,13 +119,16 @@ def index_document(doc_id: str, text: str, metadata: dict, settings: Settings) -
 
 
 def dense_search(query: str, settings: Settings, top_k: int) -> list[dict[str, Any]]:
-    """Vector search only, before reranking. Exposed so the eval harness can
-    measure recall at both stages and tell a retrieval miss from a rerank drop."""
+    """Vector search only, before reranking.
+
+    Exposed so the eval harness can measure recall at both stages and tell a
+    retrieval miss from a rerank drop.
+    """
     client = get_client(settings)
 
-    # Any transport failure means the same thing to a caller — there is no
-    # evidence to be had — so they collapse into one error rather than leaking
-    # a driver exception up as a 500.
+    # Every transport failure means the same thing to a caller: there is no
+    # evidence to be had. They collapse into one error rather than leaking a
+    # driver exception up as a 500.
     try:
         exists = client.collection_exists(settings.qdrant_collection)
     except Exception as exc:
@@ -137,7 +139,7 @@ def dense_search(query: str, settings: Settings, top_k: int) -> list[dict[str, A
     if not exists:
         raise RetrievalUnavailable(
             f"collection {settings.qdrant_collection!r} does not exist at "
-            f"{settings.qdrant_url} — ingest documents first "
+            f"{settings.qdrant_url}, so ingest documents first "
             "(`python -m scripts.ingest_corpus`)"
         )
 
@@ -153,9 +155,9 @@ def dense_search(query: str, settings: Settings, top_k: int) -> list[dict[str, A
 def rerank(query: str, hits: list[dict[str, Any]], settings: Settings) -> list[dict[str, Any]]:
     """Reorder dense hits with a cross-encoder, which reads query and passage together.
 
-    Dense retrieval decides what is *available*; the cross-encoder decides what
-    is actually *responsive*. Only the reranked top-n become receipts, so this
-    is the step that determines what the answer is allowed to cite.
+    Dense retrieval decides what is available; the cross-encoder decides what is
+    responsive. Only the reranked top-n become receipts, so this step determines
+    what the answer is allowed to cite.
     """
     if not hits:
         return []
@@ -172,8 +174,8 @@ def rerank(query: str, hits: list[dict[str, Any]], settings: Settings) -> list[d
 def search(query: str, settings: Settings, top_k: int | None = None) -> list[Receipt]:
     """Top-k dense search, cross-encoder reranked, returned as retrieval receipts.
 
-    Receipts come back tagged R1..Rn in rank order — the tags the synthesis step
-    is required to cite.
+    Receipts come back tagged R1..Rn in rank order. Those are the tags the
+    synthesis step is required to cite.
     """
     hits = dense_search(query, settings, top_k or settings.retrieval_top_k)
     ranked = rerank(query, hits, settings)
@@ -188,8 +190,8 @@ def tag_receipts(
 ) -> list[Receipt]:
     """Turn (doc_id, snippet, score) triples into tagged retrieval receipts.
 
-    Pure — the tagging convention lives here so ingestion, search and synthesis
-    can't drift apart on it.
+    The tagging convention lives here alone, so ingestion, search and synthesis
+    cannot drift apart on it.
     """
     return [
         Receipt(

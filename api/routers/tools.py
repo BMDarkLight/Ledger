@@ -1,4 +1,4 @@
-"""`GET /v1/tools` — what Ledger can call, and what's actually configured."""
+"""`GET /v1/tools`: what Ledger can call, and what is actually configured."""
 
 from fastapi import APIRouter
 

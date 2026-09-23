@@ -1,4 +1,4 @@
-"""Scoring functions for the golden set. Pure — no network, no API key."""
+"""Scoring functions for the golden set. Pure, with no network and no API key."""
 
 from dataclasses import dataclass, field
 
@@ -21,7 +21,7 @@ def mean(values: list[float | None]) -> float:
 
 
 def mean_or_none(values: list[float | None]) -> float | None:
-    """Like `mean`, but distinguishes "scored zero" from "never measured"."""
+    """Like `mean`, but keeps "scored zero" distinct from "never measured"."""
     usable = [v for v in values if v is not None]
     return sum(usable) / len(usable) if usable else None
 
@@ -50,7 +50,7 @@ class CaseResult:
     behaved_correctly: bool | None = None
     """None when this run could not observe the behavior at all.
 
-    Most refusals are decided by the receipts gate, not the router, so a
+    Most refusals are decided by the receipts gate rather than the router, so a
     routing-only run cannot see them. Scoring those as passes would report a
     refusal accuracy that no refusal produced.
     """
@@ -62,11 +62,16 @@ class CaseResult:
     """Expected documents present in the dense top-k, before reranking."""
 
     recall_after_rerank: float | None = None
-    """Same, after the cross-encoder cut it to top-n. A drop here means the
+    """The same, after the cross-encoder cut it to top-n. A drop here means the
     reranker threw away a document the vector search had already found."""
 
     citation_coverage: float | None = None
+    """Share of factual sentences carrying a valid receipt. Needs synthesis, and
+    stays None for a refusal, which has no factual sentences to cover."""
+
     substrings_hit: float | None = None
+    """Share of the case's `answer_contains` strings found in the answer."""
+
     error: str | None = None
 
 
@@ -93,7 +98,7 @@ class Scorecard:
 
     @property
     def refusals_exercised(self) -> tuple[int, int]:
-        """(observed, total) adversarial cases — the caveat next to the accuracy."""
+        """(observed, total) adversarial cases, the caveat next to the accuracy."""
         adversarial = [r for r in self.results if r.category == "adversarial"]
         observed = [r for r in adversarial if r.behaved_correctly is not None]
         return len(observed), len(adversarial)
@@ -116,11 +121,34 @@ class Scorecard:
     def citation_coverage(self) -> float | None:
         return mean_or_none([r.citation_coverage for r in self.results])
 
+    @property
+    def answer_match(self) -> float | None:
+        """How much of each expected answer turned up in the prose.
+
+        Coverage only says that the claims were cited. This says whether the
+        question was answered.
+        """
+        return mean_or_none([r.substrings_hit for r in self.results])
+
+    @property
+    def cases_errored(self) -> int:
+        return sum(1 for r in self.results if r.error and r.routed_correctly)
+
     def by_category(self) -> dict[str, float]:
         buckets: dict[str, list[float]] = {}
         for r in self.results:
             buckets.setdefault(r.category, []).append(1.0 if r.routed_correctly else 0.0)
         return {k: mean(v) for k, v in sorted(buckets.items())}
+
+    def failures(self) -> list[CaseResult]:
+        return [
+            r
+            for r in self.results
+            if not r.routed_correctly
+            or r.behaved_correctly is False
+            or r.tool_choice_correct is False
+            or r.error is not None
+        ]
 
     def to_markdown(self, header: str = "") -> str:
         observed, total = self.refusals_exercised
@@ -134,11 +162,12 @@ class Scorecard:
             f"| Cases run | {self.cases_run} |",
             f"| Routing accuracy | {self.routing_accuracy:.1%} |",
             f"| Refusal accuracy (adversarial) | {_pct(self.refusal_accuracy)}"
-            f" · {observed}/{total} cases observed |",
+            f" ({observed} of {total} cases observed) |",
             f"| Tool selection accuracy | {_pct(self.tool_accuracy)} |",
             f"| Retrieval recall@k (dense) | {_pct(self.recall)} |",
             f"| Recall after rerank | {_pct(self.recall_after_rerank)} |",
             f"| Citation coverage | {_pct(self.citation_coverage)} |",
+            f"| Expected answer match | {_pct(self.answer_match)} |",
             "",
             "## Routing accuracy by category",
             "",
@@ -146,13 +175,7 @@ class Scorecard:
             "|---|---|",
         ]
         lines += [f"| `{k}` | {v:.1%} |" for k, v in self.by_category().items()]
-        failures = [
-            r
-            for r in self.results
-            if not r.routed_correctly
-            or r.behaved_correctly is False
-            or r.tool_choice_correct is False
-        ]
+        failures = self.failures()
         if failures:
             lines += ["", "## Failing cases", "", "| Case | Category | Why |", "|---|---|---|"]
             lines += [f"| `{r.case_id}` | {r.category} | {_why(r)} |" for r in failures]

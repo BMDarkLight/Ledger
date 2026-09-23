@@ -1,13 +1,14 @@
 """Run the golden set and write eval/scorecard.md.
 
-Three modes, picked automatically by what the environment can actually support:
+Three modes, picked automatically by what the environment can support:
 
   routing    Grades the deterministic baseline router alone. Needs nothing but
-             this repo — no corpus, no models, no key.
+             this repo: no corpus, no models, no key.
   retrieval  Also ingests the corpus and measures recall@k before and after
-             reranking. Needs the corpus on disk; embeddings run locally, so
+             reranking. Needs the corpus on disk. Embeddings run locally, so
              still no API key. This is what CI runs on every pull request.
-  full       Also runs synthesis and grades citation coverage. Needs LLM_API_KEY.
+  full       Also generates answers and grades citation coverage, observed
+             refusals and expected-answer match. Needs LLM_API_KEY.
 
 Usage:
     python -m eval.run_golden_set                    # best mode available
@@ -21,8 +22,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from api.config import Settings, get_settings
+from api.schemas import AnswerStatus, AskRequest, ReceiptedAskResponse
 from api.services import router as routing
-from eval.golden_set import Case, load_golden_set
+from api.services.receipts import strip_tags
+from eval.golden_set import Behavior, Case, load_golden_set
 from eval.metrics import CaseResult, Scorecard, recall_at_k
 
 MODES = ("routing", "retrieval", "full")
@@ -39,7 +42,13 @@ MODE_CAPTIONS = {
         "same fitted-baseline caveat as routing-only mode. Citation coverage still "
         "needs synthesis, so it stays unmeasured here."
     ),
-    "full": "full pipeline (retrieval, tools and synthesis).",
+    "full": (
+        "full pipeline (retrieval, tools and synthesis). Routing numbers carry the "
+        "same fitted-baseline caveat as routing-only mode. Refusals are observed "
+        "here rather than inferred from the route, so every adversarial case is "
+        "graded. A case listed below with a tool error reached the tool stage and "
+        "could not run it, which is a failure of the tool rather than of the answer."
+    ),
 }
 
 
@@ -82,7 +91,8 @@ def _grade_routing(case: Case) -> tuple[CaseResult, list[str]]:
     elif behaved is False:
         error = "refused a question it should have attempted"
     elif tool_ok is False:
-        error = f"chose {decision.tools or '[]'}, expected {case.expected_tools}"
+        chosen = decision.tools or []
+        error = f"chose {chosen}, expected {case.expected_tools}"
     else:
         error = None
 
@@ -99,58 +109,109 @@ def _grade_routing(case: Case) -> tuple[CaseResult, list[str]]:
     )
 
 
-def run_routing() -> Scorecard:
-    card = Scorecard()
-    for case in load_golden_set():
-        result, _ = _grade_routing(case)
-        card.results.append(result)
-    return card
+def _grade_answer(case: Case, result: CaseResult, answer: ReceiptedAskResponse) -> None:
+    """Grade what only a generated answer can show: refusal, coverage, content."""
+    refused = answer.status is AnswerStatus.REFUSED
+    should_refuse = case.expected_behavior is Behavior.REFUSE
+    result.behaved_correctly = refused is should_refuse
+
+    if refused:
+        if not should_refuse:
+            result.error = result.error or "refused a question it should have answered"
+        return
+
+    if should_refuse:
+        result.error = result.error or "answered a question it should have refused"
+
+    result.citation_coverage = answer.citation_coverage
+
+    if case.answer_contains:
+        prose = strip_tags(answer.answer).lower()
+        missing = [n for n in case.answer_contains if n.lower() not in prose]
+        result.substrings_hit = 1 - len(missing) / len(case.answer_contains)
+        if missing and not result.error:
+            result.error = f"answer is missing {missing}"
+
+    if result.error is None and answer.status is AnswerStatus.UNVERIFIED:
+        uncited = sum(1 for c in answer.claims if not c.supported)
+        result.error = f"{uncited} claim(s) returned without a receipt"
 
 
-def run_retrieval(settings: Settings) -> Scorecard:
-    """Routing grading, plus recall measured at both retrieval stages."""
+def _measure_recall(case: Case, result: CaseResult, settings: Settings) -> None:
+    """Recall at both retrieval stages, so a rerank drop is visible as one."""
     from api.services import retrieval
+
+    if not case.expected_sources:
+        return
+
+    hits = retrieval.dense_search(case.question, settings, settings.retrieval_top_k)
+    result.recall = recall_at_k(case.expected_sources, [h["doc_id"] for h in hits])
+
+    ranked = retrieval.rerank(case.question, hits, settings)
+    result.recall_after_rerank = recall_at_k(case.expected_sources, [h["doc_id"] for h in ranked])
+
+    if result.error is None and result.recall_after_rerank == 0.0:
+        found = "nothing" if result.recall == 0.0 else "dense search had it, rerank dropped it"
+        result.error = f"expected {case.expected_sources} not retrieved: {found}"
+
+
+def _ingest(settings: Settings) -> None:
     from scripts.ingest_corpus import ingest_corpus
 
     try:
         ingest_corpus(settings)
     except Exception as exc:  # model download, or an unreachable vector store
         raise RuntimeError(
-            f"retrieval mode could not start: {exc}\n"
+            f"this mode could not start: {exc}\n"
             "Embedding models are downloaded from Hugging Face on first use, and "
-            "unauthenticated downloads are rate limited — set HF_TOKEN, or set "
+            "unauthenticated downloads are rate limited. Set HF_TOKEN, or set "
             "MODEL_CACHE_DIR to a warmed cache. To skip retrieval entirely, run "
             "with --mode routing."
         ) from exc
 
+
+def _answer_case(case: Case, result: CaseResult, settings: Settings) -> None:
+    """Put one case through the pipeline and grade what comes back.
+
+    A case that cannot reach an answer records why and keeps its routing score.
+    One unbuilt tool must not take the other thirty cases down with it.
+    """
+    from api.routers.ask import run_pipeline
+    from api.services.retrieval import RetrievalUnavailable
+    from api.services.synthesis import SynthesisError
+    from api.services.tools import ToolError
+
+    try:
+        answer = run_pipeline(AskRequest(question=case.question), settings)
+    except (RetrievalUnavailable, SynthesisError, ToolError, NotImplementedError) as exc:
+        result.error = result.error or f"{type(exc).__name__}: {exc}"
+    else:
+        _grade_answer(case, result, answer)
+
+
+def run(mode: str, settings: Settings, cases: list[Case] | None = None) -> Scorecard:
+    """Grade `cases` (the whole golden set by default) at the given mode."""
+    if mode not in MODES:
+        raise ValueError(f"unknown mode: {mode!r}")
+
+    cases = load_golden_set() if cases is None else cases
+    if mode != "routing":
+        _ingest(settings)
+
     card = Scorecard()
-    for case in load_golden_set():
+    for case in cases:
         result, _ = _grade_routing(case)
-
-        if case.expected_sources:
-            hits = retrieval.dense_search(case.question, settings, settings.retrieval_top_k)
-            result.recall = recall_at_k(case.expected_sources, [h["doc_id"] for h in hits])
-
-            ranked = retrieval.rerank(case.question, hits, settings)
-            result.recall_after_rerank = recall_at_k(
-                case.expected_sources, [h["doc_id"] for h in ranked]
-            )
-
-            if result.error is None and result.recall_after_rerank == 0.0:
-                found = (
-                    "nothing" if result.recall == 0.0 else "dense search had it, rerank dropped it"
-                )
-                result.error = f"expected {case.expected_sources} not retrieved — {found}"
-
+        if mode != "routing":
+            _measure_recall(case, result, settings)
+        if mode == "full":
+            _answer_case(case, result, settings)
         card.results.append(result)
     return card
 
 
-def run_full(settings: Settings) -> Scorecard:
-    raise NotImplementedError(
-        "Phase 1b: run each case through /v1/ask/receipts and grade citation "
-        "coverage and faithfulness."
-    )
+def caption(mode: str, at: datetime) -> str:
+    stamp = at.strftime("%Y-%m-%d %H:%M UTC")
+    return f"_Mode: {MODE_CAPTIONS[mode]} Generated {stamp} by `python -m eval.run_golden_set`._"
 
 
 def choose_mode(settings: Settings, requested: str | None) -> str:
@@ -174,21 +235,12 @@ def main(argv: list[str] | None = None) -> int:
     settings = get_settings()
     mode = choose_mode(settings, args.mode)
 
-    if mode == "routing":
-        card = run_routing()
-    elif mode == "retrieval":
-        card = run_retrieval(settings)
-    else:
-        card = run_full(settings)
-
-    stamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
-    header = (
-        f"_Mode: {MODE_CAPTIONS[mode]} · generated {stamp} by `python -m eval.run_golden_set`._"
-    )
+    card = run(mode, settings)
+    header = caption(mode, datetime.now(timezone.utc))
     args.out.write_text(card.to_markdown(header), encoding="utf-8")
 
     print(card.to_markdown(header))
-    print(f"→ wrote {args.out} (mode: {mode})", file=sys.stderr)
+    print(f"wrote {args.out} (mode: {mode})", file=sys.stderr)
     return 0
 
 

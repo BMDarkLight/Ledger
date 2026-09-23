@@ -12,9 +12,10 @@ class Settings(BaseSettings):
     llm_api_key: str = ""
     llm_base_url: str = "https://api.openai.com/v1"
     llm_model: str = "gpt-4o-mini"
+    llm_timeout: float = 60.0
 
-    # Embeddings — fastembed runs these locally via ONNX: no key, no torch,
-    # which is what lets CI grade retrieval on every pull request.
+    # Embeddings. fastembed runs these locally via ONNX, with no API key, which
+    # is what lets CI grade retrieval on every pull request.
     embedding_model: str = "BAAI/bge-small-en-v1.5"
     embedding_dim: int = 384
 
@@ -29,8 +30,8 @@ class Settings(BaseSettings):
     rerank_model: str = "Xenova/ms-marco-MiniLM-L-6-v2"
 
     model_cache_dir: str = ""
-    """Where ONNX model files are stored. Empty means fastembed's default, which
-    is a temp directory — fine locally, useless to a CI cache, so CI sets this."""
+    """Where ONNX model files are stored. Empty means fastembed's default, a
+    temp directory, which is fine locally but useless to a CI cache."""
 
     # Tools
     web_search_api_key: str = ""

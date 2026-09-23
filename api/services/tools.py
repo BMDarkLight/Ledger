@@ -1,12 +1,13 @@
 """Tool registry and execution.
 
-Tools produce T-tagged receipts exactly the way retrieval produces R-tagged ones:
-a tool result that isn't recorded as a receipt cannot be cited, and a claim that
-cites nothing is not an answer.
+Tools produce T-tagged receipts the same way retrieval produces R-tagged ones.
+A tool result that is not recorded as a receipt cannot be cited, and a claim
+that cites nothing is not an answer.
 """
 
 import ast
 import operator
+import re
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -27,7 +28,7 @@ class Tool:
     requires: str | None = None  # settings attribute that must be non-empty
 
 
-# --- calculator -----------------------------------------------------------
+# calculator
 
 _OPS = {
     ast.Add: operator.add,
@@ -40,6 +41,8 @@ _OPS = {
     ast.USub: operator.neg,
     ast.UAdd: operator.pos,
 }
+
+_EXPRESSION = re.compile(r"\d+(?:\.\d+)?(?:\s*(?:\*\*|[-+*/%])\s*\d+(?:\.\d+)?)+")
 
 
 def _eval_node(node: ast.AST) -> float:
@@ -61,15 +64,38 @@ def calculator(expression: str, settings: Settings) -> str:
     return str(_eval_node(tree.body))
 
 
-# --- clock ----------------------------------------------------------------
+def extract_expression(text: str) -> str | None:
+    """The longest arithmetic expression written out in `text`, if there is one.
+
+    Only useful when the question already contains the numbers. A question whose
+    figures come from the corpus needs `synthesis.plan_tool_call` instead.
+    """
+    matches = _EXPRESSION.findall(text)
+    return max(matches, key=len) if matches else None
+
+
+def argument_for(name: str, question: str) -> str:
+    """What to pass `name` for this question, without asking a model.
+
+    Raises ToolError when the question alone does not determine an argument.
+    """
+    if name != "calculator":
+        return question
+    expression = extract_expression(question)
+    if expression is None:
+        raise ToolError(f"no arithmetic expression is written out in: {question!r}")
+    return expression
+
+
+# clock
 
 
 def clock(_: str, settings: Settings) -> str:
-    """The current UTC date and time, so 'today' questions have a real source."""
+    """The current UTC date and time, so that "today" questions have a source."""
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
-# --- stubs ----------------------------------------------------------------
+# not yet built
 
 
 def web_search(query: str, settings: Settings) -> str:
@@ -105,6 +131,13 @@ def list_tools(settings: Settings) -> list[ToolSpec]:
         ToolSpec(name=t.name, description=t.description, enabled=is_enabled(t, settings))
         for t in REGISTRY.values()
     ]
+
+
+def describe(name: str) -> str:
+    tool = REGISTRY.get(name)
+    if tool is None:
+        raise ToolError(f"unknown tool: {name!r}")
+    return tool.description
 
 
 def run_tools(calls: list[tuple[str, str]], settings: Settings, start: int = 1) -> list[Receipt]:

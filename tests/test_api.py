@@ -44,3 +44,11 @@ def test_refusal_route_answers_without_touching_the_pipeline(client):
     body = response.json()
     assert body["status"] == "refused"
     assert body["receipts"] == []
+
+
+def test_eval_endpoint_runs_a_routing_pass_and_names_the_router(client):
+    response = client.post("/v1/eval/run", json={"mode": "routing", "limit": 2})
+    assert response.status_code == 200
+    body = response.json()
+    assert body["cases_run"] == 2
+    assert "Router: deterministic baseline" in body["scorecard_markdown"]

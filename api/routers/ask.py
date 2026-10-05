@@ -11,6 +11,7 @@ from api.schemas import (
     Receipt,
     ReceiptedAskResponse,
     Route,
+    RouteDecision,
 )
 from api.services import receipts as receipts_service
 from api.services import retrieval, synthesis, tools
@@ -50,9 +51,15 @@ def _tool_argument(name: str, question: str, evidence: list[Receipt], settings: 
         return planned
 
 
-def run_pipeline(request: AskRequest, settings: Settings) -> ReceiptedAskResponse:
-    """Route, gather evidence, generate, then check the generation against it."""
-    decision = routing.decide(request.question)
+def run_pipeline(
+    request: AskRequest, settings: Settings, decision: RouteDecision | None = None
+) -> ReceiptedAskResponse:
+    """Route, gather evidence, generate, then check the generation against it.
+
+    `decision` skips routing when the caller already has one, so the eval
+    harness grades and runs the same decision without asking the router twice.
+    """
+    decision = decision or routing.route(request.question, settings)
 
     if decision.route is Route.REFUSE:
         return _refusal(decision, [])

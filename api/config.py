@@ -1,6 +1,7 @@
 """Runtime configuration, loaded from the environment (see .env.example)."""
 
 from functools import lru_cache
+from typing import Literal
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -32,6 +33,10 @@ class Settings(BaseSettings):
     model_cache_dir: str = ""
     """Where ONNX model files are stored. Empty means fastembed's default, a
     temp directory, which is fine locally but useless to a CI cache."""
+
+    # Routing. "baseline" is the deterministic pattern router and costs nothing;
+    # "model" asks the LLM, which costs one call per question, /v1/route included.
+    router: Literal["baseline", "model"] = "baseline"
 
     # Tools
     web_search_api_key: str = ""

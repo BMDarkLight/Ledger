@@ -63,5 +63,5 @@ def run_eval(request: EvalRequest, settings: SettingsDep) -> EvalSummary:
         routing_accuracy=card.routing_accuracy,
         refusal_accuracy=card.refusal_accuracy,
         citation_coverage=card.citation_coverage,
-        scorecard_markdown=card.to_markdown(caption(mode, datetime.now(timezone.utc))),
+        scorecard_markdown=card.to_markdown(caption(mode, datetime.now(timezone.utc), settings)),
     )

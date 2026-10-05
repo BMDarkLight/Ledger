@@ -47,6 +47,8 @@ jobs:
         env:
           LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
           WEB_SEARCH_API_KEY: ${{ secrets.WEB_SEARCH_API_KEY }}
+          # Set the repository variable ROUTER=model to grade the model router.
+          ROUTER: ${{ vars.ROUTER || 'baseline' }}
           # In-process vector store: no service container, no secrets, so the
           # retrieval numbers below are produced on every pull request.
           QDRANT_URL: ":memory:"

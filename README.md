@@ -30,7 +30,7 @@
 | | |
 |---|---|
 | **Receipts only** | Every claim in an answer is tagged `[R#]` (retrieved chunk) or `[T#]` (tool call). No tag, no claim: it gets flagged unverified instead. |
-| **Transparent routing** | `POST /v1/route` returns the routing decision and its rationale without spending a generation call. |
+| **Transparent routing** | `POST /v1/route` returns the routing decision and its rationale without generating an answer. The deterministic baseline router costs nothing; the model-backed one (`ROUTER=model`) costs one call. |
 | **Adversarial eval set** | The golden set includes unanswerable questions and disguised tool-questions, not just easy wins. |
 | **Multi-hop chaining** | A question can retrieve a figure from the corpus and then compute against it, with both halves cited. |
 | **Living scorecard** | CI re-runs the eval set on every PR and updates a checked-in scorecard, so the numbers are never stale. |
@@ -59,6 +59,7 @@ USER QUERY
 ROUTER
 ==========================
 Decides: retrieve | call a tool | both, chained
+Baseline patterns, or the model (ROUTER=model)
 Emits a routing rationale, inspectable via /v1/route
 
 ==========================
@@ -247,7 +248,8 @@ Ledger/
 │   │   ├── eval.py          # /v1/eval/run
 │   │   └── chat.py          # OpenAI-compatible surface
 │   ├── services/
-│   │   ├── router.py        # routing decision logic
+│   │   ├── router.py        # baseline router + ROUTER switch
+│   │   ├── model_router.py  # model-backed router
 │   │   ├── retrieval.py     # Qdrant search + rerank
 │   │   ├── tools.py         # tool registry + execution
 │   │   ├── receipts.py      # citation tagging + refusal logic
@@ -275,14 +277,19 @@ Ledger/
 ## Status
 
 Built and covered by tests: chunking, retrieval with reranking, the receipts and
-refusal gate, the deterministic baseline router, all four tools (calculator,
-clock, sandboxed code execution, and web search through Tavily), receipted
-synthesis, tool-argument planning for chained questions, and the eval harness in
-all three modes.
+refusal gate, both routers (the deterministic baseline and the model-backed
+one, which falls back to the baseline and says so when its reply is unusable),
+all four tools (calculator, clock, sandboxed code execution, and web search
+through Tavily), receipted synthesis, tool-argument planning for chained
+questions, and the eval harness in all three modes.
 
-Not built yet: the model-backed router that is meant to beat the deterministic
-baseline, SSE streaming on the OpenAI-compatible surface,
-and faithfulness scoring by an LLM judge. Citation coverage measures whether a
+Not measured yet: whether the model-backed router beats the baseline. Run
+`python -m eval.run_golden_set --router model` with LLM_API_KEY set. The
+baseline's score is fitted to the golden set; the model router's prompt contains
+none of it.
+
+Not built yet: SSE streaming on the OpenAI-compatible surface, and faithfulness
+scoring by an LLM judge. Citation coverage measures whether a
 claim carries a receipt, not yet whether the receipt supports it.
 
 ---
@@ -293,7 +300,7 @@ claim carries a receipt, not yet whether the receipt supports it.
       (including adversarial traps) before any pipeline code
 - [x] **Phase 1** Retrieval MVP: ingest, embed, search, rerank, cited answers,
       baseline recall@k
-- [ ] **Phase 2** Model-backed router, plus web search and sandboxed code
+- [x] **Phase 2** Model-backed router, plus web search and sandboxed code
       execution
 - [x] **Phase 3** Receipts and refusal logic, with the adversarial set graded on
       refusals as they happen

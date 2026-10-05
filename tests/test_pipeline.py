@@ -129,3 +129,19 @@ def test_maths_beyond_the_calculator_runs_a_planned_snippet(model, configured):
     (receipt,) = result.receipts
     assert (receipt.source, receipt.snippet) == ("code_exec", "42.0")
     assert receipt.metadata["argument"] == "math.sqrt(1764)"
+
+
+def test_a_decision_passed_in_is_used_instead_of_routing_again(monkeypatch, model, configured):
+    """The eval grades a decision and then runs it; the router is asked once."""
+    from api.schemas import Route, RouteDecision
+    from api.services import router as routing
+
+    def no_second_call(question, settings):
+        raise AssertionError("the router was asked again")
+
+    monkeypatch.setattr(routing, "route", no_second_call)
+    model.append("1327 multiplied by 4519 is 5996713 [T1].")
+    decision = RouteDecision(route=Route.TOOL, rationale="given", tools=["calculator"])
+
+    result = run_pipeline(AskRequest(question="What is 1327 * 4519?"), configured, decision)
+    assert result.route.rationale == "given"

@@ -22,32 +22,38 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from api.config import Settings, get_settings
-from api.schemas import AnswerStatus, AskRequest, ReceiptedAskResponse
+from api.schemas import AnswerStatus, AskRequest, ReceiptedAskResponse, RouteDecision
 from api.services import router as routing
 from api.services.receipts import strip_tags
+from api.services.synthesis import SynthesisError
 from eval.golden_set import Behavior, Case, load_golden_set
 from eval.metrics import CaseResult, Scorecard, recall_at_k
 
 MODES = ("routing", "retrieval", "full")
 
 MODE_CAPTIONS = {
-    "routing": (
-        "routing-only (deterministic baseline router, no corpus, no LLM calls). "
-        "Read this number with suspicion: the baseline's patterns were written "
-        "against these same questions, so it is fitted to them and its score is "
-        "an upper bound, not a generalization estimate."
-    ),
+    "routing": "routing-only (no corpus, no answers generated).",
     "retrieval": (
-        "retrieval (local ONNX embeddings, no LLM calls). Routing numbers carry the "
-        "same fitted-baseline caveat as routing-only mode. Citation coverage still "
+        "retrieval (local ONNX embeddings, no answers generated). Citation coverage "
         "needs synthesis, so it stays unmeasured here."
     ),
     "full": (
-        "full pipeline (retrieval, tools and synthesis). Routing numbers carry the "
-        "same fitted-baseline caveat as routing-only mode. Refusals are observed "
+        "full pipeline (retrieval, tools and synthesis). Refusals are observed "
         "here rather than inferred from the route, so every adversarial case is "
         "graded. A case listed below with a tool error reached the tool stage and "
         "could not run it, which is a failure of the tool rather than of the answer."
+    ),
+}
+
+ROUTER_CAPTIONS = {
+    "baseline": (
+        "Router: deterministic baseline. Read its routing numbers with suspicion: "
+        "its patterns were written against these same questions, so its score is "
+        "an upper bound, not a generalization estimate."
+    ),
+    "model": (
+        "Router: model ({model}). Its prompt contains nothing from the golden set, "
+        "so its routing numbers estimate how it does on unseen questions."
     ),
 }
 
@@ -79,9 +85,8 @@ def _grade_tool_choice(case: Case, chosen_tools: list[str]) -> bool | None:
     return None
 
 
-def _grade_routing(case: Case) -> tuple[CaseResult, list[str]]:
+def _grade_routing(case: Case, decision: RouteDecision) -> CaseResult:
     """Everything gradeable without touching the corpus."""
-    decision = routing.decide(case.question)
     routed = decision.route.value == case.expected_route
     behaved = _grade_behavior(case, decision.route.value)
     tool_ok = _grade_tool_choice(case, decision.tools)
@@ -96,16 +101,13 @@ def _grade_routing(case: Case) -> tuple[CaseResult, list[str]]:
     else:
         error = None
 
-    return (
-        CaseResult(
-            case_id=case.id,
-            category=case.category.value,
-            routed_correctly=routed,
-            behaved_correctly=behaved,
-            tool_choice_correct=tool_ok,
-            error=error,
-        ),
-        decision.tools,
+    return CaseResult(
+        case_id=case.id,
+        category=case.category.value,
+        routed_correctly=routed,
+        behaved_correctly=behaved,
+        tool_choice_correct=tool_ok,
+        error=error,
     )
 
 
@@ -170,7 +172,9 @@ def _ingest(settings: Settings) -> None:
         ) from exc
 
 
-def _answer_case(case: Case, result: CaseResult, settings: Settings) -> None:
+def _answer_case(
+    case: Case, result: CaseResult, settings: Settings, decision: RouteDecision
+) -> None:
     """Put one case through the pipeline and grade what comes back.
 
     A case that cannot reach an answer records why and keeps its routing score.
@@ -178,11 +182,10 @@ def _answer_case(case: Case, result: CaseResult, settings: Settings) -> None:
     """
     from api.routers.ask import run_pipeline
     from api.services.retrieval import RetrievalUnavailable
-    from api.services.synthesis import SynthesisError
     from api.services.tools import ToolError
 
     try:
-        answer = run_pipeline(AskRequest(question=case.question), settings)
+        answer = run_pipeline(AskRequest(question=case.question), settings, decision)
     except (RetrievalUnavailable, SynthesisError, ToolError, NotImplementedError) as exc:
         result.error = result.error or f"{type(exc).__name__}: {exc}"
     else:
@@ -200,18 +203,26 @@ def run(mode: str, settings: Settings, cases: list[Case] | None = None) -> Score
 
     card = Scorecard()
     for case in cases:
-        result, _ = _grade_routing(case)
+        try:
+            decision = routing.route(case.question, settings)
+        except SynthesisError as exc:
+            raise RuntimeError(f"the model router could not be reached: {exc}") from exc
+        result = _grade_routing(case, decision)
         if mode != "routing":
             _measure_recall(case, result, settings)
         if mode == "full":
-            _answer_case(case, result, settings)
+            _answer_case(case, result, settings, decision)
         card.results.append(result)
     return card
 
 
-def caption(mode: str, at: datetime) -> str:
+def caption(mode: str, at: datetime, settings: Settings) -> str:
     stamp = at.strftime("%Y-%m-%d %H:%M UTC")
-    return f"_Mode: {MODE_CAPTIONS[mode]} Generated {stamp} by `python -m eval.run_golden_set`._"
+    router = ROUTER_CAPTIONS[settings.router].format(model=settings.llm_model)
+    return (
+        f"_Mode: {MODE_CAPTIONS[mode]} {router} "
+        f"Generated {stamp} by `python -m eval.run_golden_set`._"
+    )
 
 
 def choose_mode(settings: Settings, requested: str | None) -> str:
@@ -230,13 +241,18 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--mode", choices=MODES, default=None)
     parser.add_argument("--out", type=Path, default=Path("eval/scorecard.md"))
+    parser.add_argument(
+        "--router", choices=("baseline", "model"), default=None, help="overrides ROUTER"
+    )
     args = parser.parse_args(argv)
 
     settings = get_settings()
+    if args.router:
+        settings = settings.model_copy(update={"router": args.router})
     mode = choose_mode(settings, args.mode)
 
     card = run(mode, settings)
-    header = caption(mode, datetime.now(timezone.utc))
+    header = caption(mode, datetime.now(timezone.utc), settings)
     args.out.write_text(card.to_markdown(header), encoding="utf-8")
 
     print(card.to_markdown(header))

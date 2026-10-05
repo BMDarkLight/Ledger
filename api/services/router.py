@@ -1,12 +1,14 @@
 """Routing: retrieve, call a tool, or chain both, and always say why.
 
-This is the deterministic Phase-1 baseline. It runs with no API key, which makes
-it the floor that the Phase-2 LLM router has to beat on the golden set. Replace
-`decide()` with the model-backed version and keep the rationale contract.
+`decide()` is the deterministic baseline. It runs with no API key, which makes
+it the floor that the model-backed router (`model_router.py`) has to beat on the
+golden set. `route()` picks between them according to the ROUTER setting; both
+keep the rationale contract.
 """
 
 import re
 
+from api.config import Settings
 from api.schemas import Route, RouteDecision
 
 # Questions whose answer changes with the wall clock or the outside world.
@@ -158,10 +160,25 @@ def decide(question: str) -> RouteDecision:
     )
 
 
-# Corpus-specific vocabulary. Swap this when the corpus changes; it is the only
-# place in the router that knows what Ledger has been fed.
+# Corpus-specific knowledge. Swap these when the corpus changes; they are the
+# only place in routing that knows what Ledger has been fed.
+CORPUS_DESCRIPTION = (
+    "Python Enhancement Proposals (PEPs), Python's design documents. They cover "
+    "code style, docstrings, type hints, packaging metadata, the PEP process "
+    "itself and individual language features, and each one records its number, "
+    "title, authors, status, type and creation date."
+)
 _CORPUS_SUBJECT = re.compile(r"\b(pep[\s-]?\d+|pep\b|python|guido|typing|asyncio)\b", re.IGNORECASE)
 
 
 def _mentions_corpus_subject(q: str) -> bool:
     return bool(_CORPUS_SUBJECT.search(q))
+
+
+def route(question: str, settings: Settings) -> RouteDecision:
+    """The routing decision, made by whichever router ROUTER selects."""
+    if settings.router == "model":
+        from api.services import model_router
+
+        return model_router.decide(question, settings, CORPUS_DESCRIPTION, fallback=decide)
+    return decide(question)

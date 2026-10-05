@@ -1,6 +1,6 @@
 # Ledger scorecard
 
-_Mode: retrieval (local ONNX embeddings, no answers generated). Citation coverage needs synthesis, so it stays unmeasured here. Router: deterministic baseline. Read its routing numbers with suspicion: its patterns were written against these same questions, so its score is an upper bound, not a generalization estimate. Generated 2026-10-05 05:02 UTC by `python -m eval.run_golden_set`._
+_Mode: retrieval (local ONNX embeddings, no answers generated). Citation coverage needs synthesis, so it stays unmeasured here. Router: deterministic baseline. Read its routing numbers with suspicion: its patterns were written against these same questions, so its score is an upper bound, not a generalization estimate. Generated 2026-10-05 05:25 UTC by `python -m eval.run_golden_set`._
 
 | Metric | Score |
 |---|---|
@@ -8,8 +8,8 @@ _Mode: retrieval (local ONNX embeddings, no answers generated). Citation coverag
 | Routing accuracy | 96.8% |
 | Refusal accuracy (adversarial) | 100.0% (2 of 8 cases observed) |
 | Tool selection accuracy | 92.9% |
-| Retrieval recall@k (dense) | 94.1% |
-| Recall after rerank | 94.1% |
+| Retrieval recall@k (first stage) | 94.1% |
+| Recall after rerank | 91.2% |
 | Citation coverage | _not measured_ |
 | Expected answer match | _not measured_ |
 | Faithfulness (judged) | _not measured_ |

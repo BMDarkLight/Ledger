@@ -64,8 +64,8 @@ Emits a routing rationale, inspectable via /v1/route
 ==========================
 RETRIEVAL              TOOLS
 ==========================
-Qdrant top-k search     Calculator, clock, code exec
-+ cross-encoder rerank  (web search: not built)
+Qdrant top-k search     Calculator, clock
++ cross-encoder rerank  Code exec, web search
 
 ==========================
 SYNTHESIS
@@ -163,6 +163,7 @@ built yet.
 - **Python 3.10+**
 - **Qdrant** running locally (`docker run -p 6333:6333 qdrant/qdrant`)
 - An OpenAI-compatible endpoint and key, for generation only
+- Optionally, a [Tavily](https://tavily.com) API key, for the web search tool
 
 ### Install and run
 
@@ -274,13 +275,13 @@ Ledger/
 ## Status
 
 Built and covered by tests: chunking, retrieval with reranking, the receipts and
-refusal gate, the deterministic baseline router, the calculator, clock and
-sandboxed code execution tools, receipted synthesis, tool-argument planning for
-chained questions, and the eval harness in all three modes.
+refusal gate, the deterministic baseline router, all four tools (calculator,
+clock, sandboxed code execution, and web search through Tavily), receipted
+synthesis, tool-argument planning for chained questions, and the eval harness in
+all three modes.
 
-Not built yet: the web search tool (it reports itself as unavailable rather
-than pretending), the model-backed router that is meant to
-beat the deterministic baseline, SSE streaming on the OpenAI-compatible surface,
+Not built yet: the model-backed router that is meant to beat the deterministic
+baseline, SSE streaming on the OpenAI-compatible surface,
 and faithfulness scoring by an LLM judge. Citation coverage measures whether a
 claim carries a receipt, not yet whether the receipt supports it.
 

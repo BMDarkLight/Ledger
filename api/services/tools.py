@@ -15,6 +15,8 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
+import httpx
+
 from api.config import Settings
 from api.schemas import Receipt, ReceiptKind, ToolSpec
 
@@ -174,11 +176,61 @@ def code_exec(code: str, settings: Settings) -> str:
     return output
 
 
-# not yet built
+# web_search
+
+TAVILY_URL = "https://api.tavily.com/search"
+WEB_SEARCH_MAX_RESULTS = 5
+WEB_SEARCH_TIMEOUT_S = 15.0
+
+_SEARCH_FAILURES = {
+    401: "the search provider rejected the API key (check WEB_SEARCH_API_KEY)",
+    429: "the search provider is rate limiting requests",
+    432: "the search plan's usage limit has been reached",
+    433: "the search plan's usage limit has been reached",
+}
+
+
+def _search_client() -> httpx.Client:
+    return httpx.Client(timeout=WEB_SEARCH_TIMEOUT_S)
 
 
 def web_search(query: str, settings: Settings) -> str:
-    raise NotImplementedError("Phase 2: web search backend.")
+    """Search the live web through Tavily and return the results as one snippet.
+
+    Each result keeps its title and URL, so a claim citing this receipt can be
+    traced to the page it came from. Tavily can also return an answer written
+    by its own model; that is not requested, because a summary from another
+    model is not a source.
+    """
+    try:
+        with _search_client() as client:
+            response = client.post(
+                TAVILY_URL,
+                headers={"Authorization": f"Bearer {settings.web_search_api_key}"},
+                json={
+                    "query": query,
+                    "max_results": WEB_SEARCH_MAX_RESULTS,
+                    "search_depth": "basic",
+                    "include_answer": False,
+                    "include_raw_content": False,
+                },
+            )
+    except httpx.HTTPError as exc:
+        raise ToolError(f"the search provider is unreachable: {exc}") from exc
+
+    if response.status_code != 200:
+        reason = _SEARCH_FAILURES.get(
+            response.status_code, f"the search provider returned HTTP {response.status_code}"
+        )
+        raise ToolError(reason)
+
+    results = response.json().get("results") or []
+    if not results:
+        return f"Web search for {query!r} returned no results."
+    return "\n\n".join(
+        f"{i}. {r.get('title', '').strip()} ({r.get('url', '')})\n{r.get('content', '').strip()}"
+        for i, r in enumerate(results, start=1)
+    )
 
 
 REGISTRY: dict[str, Tool] = {

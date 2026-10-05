@@ -22,6 +22,10 @@ class Settings(BaseSettings):
     # is what lets CI grade retrieval on every pull request.
     embedding_model: str = "BAAI/bge-small-en-v1.5"
     embedding_dim: int = 384
+    # BM25 for exact-token matching, fused with the dense results. "dense"
+    # turns it off, for comparison; both vectors are always indexed.
+    sparse_model: str = "Qdrant/bm25"
+    retrieval_mode: Literal["hybrid", "dense"] = "hybrid"
 
     # Qdrant
     qdrant_url: str = "http://localhost:6333"

@@ -13,7 +13,7 @@ import argparse
 import sys
 
 from api.config import Settings, get_settings
-from api.services.retrieval import index_document
+from api.services.retrieval import get_client, index_document
 from scripts.fetch_corpus import corpus_path, load_document, referenced_pep_ids
 
 
@@ -38,9 +38,18 @@ def ingest_corpus(settings: Settings, verbose: bool = False) -> int:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--quiet", action="store_true")
+    parser.add_argument(
+        "--recreate",
+        action="store_true",
+        help="drop the collection first, e.g. after a schema change",
+    )
     args = parser.parse_args(argv)
 
     settings = get_settings()
+    if args.recreate:
+        client = get_client(settings)
+        if client.collection_exists(settings.qdrant_collection):
+            client.delete_collection(settings.qdrant_collection)
     try:
         total = ingest_corpus(settings, verbose=not args.quiet)
     except FileNotFoundError as exc:

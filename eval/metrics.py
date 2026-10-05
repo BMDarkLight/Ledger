@@ -59,7 +59,7 @@ class CaseResult:
     """None when the case expects no tool and none was chosen."""
 
     recall: float | None = None
-    """Expected documents present in the dense top-k, before reranking."""
+    """Expected documents present in the first-stage top-k, before reranking."""
 
     recall_after_rerank: float | None = None
     """The same, after the cross-encoder cut it to top-n. A drop here means the
@@ -173,7 +173,7 @@ class Scorecard:
             f"| Refusal accuracy (adversarial) | {_pct(self.refusal_accuracy)}"
             f" ({observed} of {total} cases observed) |",
             f"| Tool selection accuracy | {_pct(self.tool_accuracy)} |",
-            f"| Retrieval recall@k (dense) | {_pct(self.recall)} |",
+            f"| Retrieval recall@k (first stage) | {_pct(self.recall)} |",
             f"| Recall after rerank | {_pct(self.recall_after_rerank)} |",
             f"| Citation coverage | {_pct(self.citation_coverage)} |",
             f"| Expected answer match | {_pct(self.answer_match)} |",

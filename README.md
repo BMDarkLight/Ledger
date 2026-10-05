@@ -65,8 +65,9 @@ Emits a routing rationale, inspectable via /v1/route
 ==========================
 RETRIEVAL              TOOLS
 ==========================
-Qdrant top-k search     Calculator, clock
-+ cross-encoder rerank  Code exec, web search
+Dense + BM25 search,    Calculator, clock
+fused (RRF), then       Code exec, web search
+cross-encoder rerank
 
 ==========================
 SYNTHESIS
@@ -189,6 +190,9 @@ No Qdrant server handy? Set `QDRANT_URL=":memory:"` to run the store in-process.
 Embeddings are local either way, so retrieval needs no API key. Only synthesis
 does.
 
+A collection indexed before hybrid search existed has no BM25 vectors, and
+search says so. Rebuild it once with `python -m scripts.ingest_corpus --recreate`.
+
 - Docs: `http://localhost:8000/docs`
 - Health: `http://localhost:8000/health`
 
@@ -225,8 +229,11 @@ retrieval numbers are produced on every pull request, not just on `main`.
 
 - **FastAPI** and **Uvicorn** for the HTTP surface and OpenAPI docs
 - **Qdrant** for the vector store, with an in-process mode for tests and CI
-- **fastembed** for local ONNX embeddings and cross-encoder reranking: no API
-  key and no torch, so CI can grade retrieval on every pull request
+- **fastembed** for local ONNX embeddings, BM25 and cross-encoder reranking: no
+  API key and no torch, so CI can grade retrieval on every pull request. Dense
+  and BM25 results are fused because questions name PEPs by number, which an
+  embedding barely distinguishes and BM25 matches exactly (`RETRIEVAL_MODE=dense`
+  turns BM25 off for comparison)
 - **Pydantic v2** for schemas and configuration
 - **openai** as the client for any OpenAI-compatible generation endpoint
 - **pytest** for testing

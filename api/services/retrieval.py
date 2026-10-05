@@ -1,4 +1,9 @@
-"""Qdrant search and cross-encoder rerank, producing R-tagged receipts.
+"""Hybrid Qdrant search and cross-encoder rerank, producing R-tagged receipts.
+
+Candidates come from two searches fused by reciprocal rank: dense embeddings,
+which match meaning, and BM25, which matches exact tokens. Questions name PEPs
+by number, and an embedding barely distinguishes "PEP 484" from "PEP 572"; BM25
+does. RETRIEVAL_MODE=dense turns the BM25 half off for comparison.
 
 Embeddings run locally through fastembed (ONNX, no torch, no API key), and the
 vector store speaks the same client whether it is a real Qdrant or an in-process
@@ -16,6 +21,11 @@ from api.services.chunking import chunk_document
 
 if TYPE_CHECKING:  # pragma: no cover - deferred to keep the import cheap
     from qdrant_client import QdrantClient
+
+DENSE = "dense"
+SPARSE = "bm25"
+"""Named vectors on every point. Both are always written, so switching
+RETRIEVAL_MODE never needs a re-ingest."""
 
 IN_MEMORY = ":memory:"
 """QDRANT_URL value that runs the store in-process, as tests and CI do."""
@@ -44,6 +54,13 @@ def _embedder(model_name: str, cache_dir: str):
 
 
 @lru_cache(maxsize=4)
+def _sparse_embedder(model_name: str, cache_dir: str):
+    from fastembed import SparseTextEmbedding
+
+    return SparseTextEmbedding(model_name=model_name, cache_dir=cache_dir or None)
+
+
+@lru_cache(maxsize=4)
 def _reranker(model_name: str, cache_dir: str):
     from fastembed.rerank.cross_encoder import TextCrossEncoder
 
@@ -63,17 +80,33 @@ def get_client(settings: Settings) -> "QdrantClient":
     return _client(settings.qdrant_url, settings.qdrant_api_key)
 
 
+def _require_current_schema(settings: Settings) -> None:
+    """Fail clearly on a collection built before hybrid search existed."""
+    params = get_client(settings).get_collection(settings.qdrant_collection).config.params
+    vectors = params.vectors if isinstance(params.vectors, dict) else {}
+    if DENSE not in vectors or SPARSE not in (params.sparse_vectors or {}):
+        raise RetrievalUnavailable(
+            f"collection {settings.qdrant_collection!r} was built by an older Ledger "
+            "without the dense and bm25 vectors hybrid search needs. Rebuild it with "
+            "`python -m scripts.ingest_corpus --recreate`"
+        )
+
+
 def ensure_collection(settings: Settings) -> None:
     from qdrant_client import models
 
     client = get_client(settings)
     if client.collection_exists(settings.qdrant_collection):
+        _require_current_schema(settings)
         return
     client.create_collection(
         collection_name=settings.qdrant_collection,
-        vectors_config=models.VectorParams(
-            size=settings.embedding_dim, distance=models.Distance.COSINE
-        ),
+        vectors_config={
+            DENSE: models.VectorParams(size=settings.embedding_dim, distance=models.Distance.COSINE)
+        },
+        # BM25's term weights need corpus statistics, which Qdrant keeps
+        # current as points arrive when the IDF modifier is on.
+        sparse_vectors_config={SPARSE: models.SparseVectorParams(modifier=models.Modifier.IDF)},
     )
 
 
@@ -88,6 +121,24 @@ def embed_query(query: str, settings: Settings) -> list[float]:
     return next(iter(model.query_embed(query))).tolist()
 
 
+def sparse_embed(texts: list[str], settings: Settings):
+    from qdrant_client import models
+
+    model = _sparse_embedder(settings.sparse_model, settings.model_cache_dir)
+    return [
+        models.SparseVector(indices=v.indices.tolist(), values=v.values.tolist())
+        for v in model.embed(texts)
+    ]
+
+
+def sparse_embed_query(query: str, settings: Settings):
+    from qdrant_client import models
+
+    model = _sparse_embedder(settings.sparse_model, settings.model_cache_dir)
+    v = next(iter(model.query_embed(query)))
+    return models.SparseVector(indices=v.indices.tolist(), values=v.values.tolist())
+
+
 def index_document(doc_id: str, text: str, metadata: dict, settings: Settings) -> int:
     """Chunk, embed and upsert a document. Returns the number of chunks written."""
     from qdrant_client import models
@@ -97,13 +148,15 @@ def index_document(doc_id: str, text: str, metadata: dict, settings: Settings) -
         return 0
 
     ensure_collection(settings)
-    vectors = embed([c.text for c in chunks], settings)
+    texts = [c.text for c in chunks]
+    dense_vectors = embed(texts, settings)
+    sparse_vectors = sparse_embed(texts, settings)
     get_client(settings).upsert(
         collection_name=settings.qdrant_collection,
         points=[
             models.PointStruct(
                 id=point_id(chunk.chunk_id),
-                vector=vector,
+                vector={DENSE: dense, SPARSE: sparse},
                 payload={
                     "doc_id": chunk.doc_id,
                     "chunk_id": chunk.chunk_id,
@@ -112,18 +165,20 @@ def index_document(doc_id: str, text: str, metadata: dict, settings: Settings) -
                     **metadata,
                 },
             )
-            for chunk, vector in zip(chunks, vectors, strict=True)
+            for chunk, dense, sparse in zip(chunks, dense_vectors, sparse_vectors, strict=True)
         ],
     )
     return len(chunks)
 
 
-def dense_search(query: str, settings: Settings, top_k: int) -> list[dict[str, Any]]:
-    """Vector search only, before reranking.
+def candidate_search(query: str, settings: Settings, top_k: int) -> list[dict[str, Any]]:
+    """First-stage search, before reranking: hybrid by default, dense if configured.
 
     Exposed so the eval harness can measure recall at both stages and tell a
     retrieval miss from a rerank drop.
     """
+    from qdrant_client import models
+
     client = get_client(settings)
 
     # Every transport failure means the same thing to a caller: there is no
@@ -143,12 +198,32 @@ def dense_search(query: str, settings: Settings, top_k: int) -> list[dict[str, A
             "(`python -m scripts.ingest_corpus`)"
         )
 
-    response = client.query_points(
-        collection_name=settings.qdrant_collection,
-        query=embed_query(query, settings),
-        limit=top_k,
-        with_payload=True,
-    )
+    _require_current_schema(settings)
+
+    dense = embed_query(query, settings)
+    if settings.retrieval_mode == "dense":
+        response = client.query_points(
+            collection_name=settings.qdrant_collection,
+            query=dense,
+            using=DENSE,
+            limit=top_k,
+            with_payload=True,
+        )
+    else:
+        # Each half proposes twice what is kept, so a chunk that only one of
+        # them ranks highly still reaches the fusion.
+        response = client.query_points(
+            collection_name=settings.qdrant_collection,
+            prefetch=[
+                models.Prefetch(query=dense, using=DENSE, limit=top_k * 2),
+                models.Prefetch(
+                    query=sparse_embed_query(query, settings), using=SPARSE, limit=top_k * 2
+                ),
+            ],
+            query=models.FusionQuery(fusion=models.Fusion.RRF),
+            limit=top_k,
+            with_payload=True,
+        )
     return [{**p.payload, "score": p.score} for p in response.points]
 
 
@@ -177,7 +252,7 @@ def search(query: str, settings: Settings, top_k: int | None = None) -> list[Rec
     Receipts come back tagged R1..Rn in rank order. Those are the tags the
     synthesis step is required to cite.
     """
-    hits = dense_search(query, settings, top_k or settings.retrieval_top_k)
+    hits = candidate_search(query, settings, top_k or settings.retrieval_top_k)
     ranked = rerank(query, hits, settings)
     return tag_receipts(
         [(h["doc_id"], h["text"], h["score"]) for h in ranked],

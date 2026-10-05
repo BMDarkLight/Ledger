@@ -147,7 +147,7 @@ def _measure_recall(case: Case, result: CaseResult, settings: Settings) -> None:
     if not case.expected_sources:
         return
 
-    hits = retrieval.dense_search(case.question, settings, settings.retrieval_top_k)
+    hits = retrieval.candidate_search(case.question, settings, settings.retrieval_top_k)
     result.recall = recall_at_k(case.expected_sources, [h["doc_id"] for h in hits])
 
     ranked = retrieval.rerank(case.question, hits, settings)

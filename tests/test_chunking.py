@@ -53,7 +53,23 @@ def test_chunks_carry_their_section_for_context():
     chunks = chunk_document("pep-0020", RST)
     zen = next(c for c in chunks if "Beautiful" in c.text)
     assert zen.section == "The Zen of Python"
-    assert zen.text.startswith("The Zen of Python"), "section title is prepended for embedding"
+    assert "The Zen of Python" in zen.text.splitlines()[0], "section is prepended for embedding"
+
+
+def test_body_chunks_name_the_document_they_come_from():
+    """Questions name a PEP by number, and the body text almost never repeats it.
+
+    Without the document in the header, "what is PEP 484 about" can only match
+    the metadata chunk, and the abstract that answers it ranks below chunks from
+    other PEPs.
+    """
+    abstract = next(c for c in chunk_document("pep-0020", RST) if c.section == "Abstract")
+    assert abstract.text.splitlines()[0] == "PEP 20: The Zen of Python > Abstract"
+
+
+def test_documents_without_a_pep_preamble_keep_a_section_only_header():
+    chunks = chunk_document("notes", "Intro\n=====\n\nsome body text\n")
+    assert chunks[0].text == "Intro\n\nsome body text"
 
 
 def test_metadata_chunk_is_not_prefixed_with_its_own_title():

@@ -94,27 +94,46 @@ def _pack(paragraphs: list[str], max_chars: int, overlap: int) -> list[str]:
     return windows
 
 
+_FIELD = re.compile(r"^(PEP|Title):\s*(.+?)\s*$", re.MULTILINE)
+
+
+def document_label(preamble: str) -> str | None:
+    """The document label, such as "PEP 484: Type Hints", or None without a preamble."""
+    fields = dict(_FIELD.findall(preamble))
+    if "PEP" not in fields:
+        return None
+    label = f"PEP {fields['PEP']}"
+    return f"{label}: {fields['Title']}" if "Title" in fields else label
+
+
 def chunk_document(
     doc_id: str,
     text: str,
     max_chars: int = DEFAULT_MAX_CHARS,
     overlap: int = DEFAULT_OVERLAP_PARAGRAPHS,
 ) -> list[Chunk]:
-    """Chunk a document, prefixing each chunk with its section for context.
+    """Chunk a document, prefixing each chunk with where it comes from.
 
     The section title is prepended to the embedded text because "Author" or
     "Rationale" is often the only thing that distinguishes an otherwise generic
-    passage, and because it makes a retrieved receipt readable on its own.
+    passage. The document is prepended too, because questions name a PEP by
+    number and its body text almost never repeats that number. Both also make a
+    retrieved receipt readable on its own.
     """
+    sections = split_sections(text)
+    preamble = next((body for title, body in sections if title == METADATA_SECTION), "")
+    label = document_label(preamble)
+
     chunks: list[Chunk] = []
-    for section, body in split_sections(text):
+    for section, body in sections:
+        header = f"{label} > {section}" if label else section
         for window in _pack(_paragraphs(body), max_chars, overlap):
             chunks.append(
                 Chunk(
                     doc_id=doc_id,
                     ordinal=len(chunks),
                     section=section,
-                    text=f"{section}\n\n{window}" if section != METADATA_SECTION else window,
+                    text=f"{header}\n\n{window}" if section != METADATA_SECTION else window,
                 )
             )
     return chunks

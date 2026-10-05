@@ -34,7 +34,7 @@
 | **Adversarial eval set** | The golden set includes unanswerable questions and disguised tool-questions, not just easy wins. |
 | **Multi-hop chaining** | A question can retrieve a figure from the corpus and then compute against it, with both halves cited. |
 | **Living scorecard** | CI re-runs the eval set on every PR and updates a checked-in scorecard, so the numbers are never stale. |
-| **OpenAI-compatible** | `/v1/chat/completions`, so existing clients point at Ledger unchanged. |
+| **OpenAI-compatible** | `/v1/chat/completions`, streaming included, so existing clients point at Ledger unchanged. Streaming starts once the whole answer has passed the receipts check, so it never sends a claim the check would flag. |
 
 ---
 
@@ -148,7 +148,7 @@ the numbers stay attached to a real run.
 | `POST` | `/v1/documents` | Ingest a document into the vector store |
 | `GET` | `/v1/tools` | List available tools and whether each is configured |
 | `POST` | `/v1/eval/run` | Run the golden set on demand, return a scorecard |
-| `POST` | `/v1/chat/completions` | OpenAI-compatible (streaming not built yet) |
+| `POST` | `/v1/chat/completions` | OpenAI-compatible, including `stream: true` |
 
 A request that cannot be answered says so with a status code rather than a
 degraded answer: `503` when the vector store is unreachable, a tool is
@@ -288,9 +288,8 @@ Not measured yet: whether the model-backed router beats the baseline. Run
 baseline's score is fitted to the golden set; the model router's prompt contains
 none of it.
 
-Not built yet: SSE streaming on the OpenAI-compatible surface, and faithfulness
-scoring by an LLM judge. Citation coverage measures whether a
-claim carries a receipt, not yet whether the receipt supports it.
+Not built yet: faithfulness scoring by an LLM judge. Citation coverage measures
+whether a claim carries a receipt, not yet whether the receipt supports it.
 
 ---
 

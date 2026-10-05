@@ -9,7 +9,8 @@ import re
 from api.schemas import AnswerStatus, Claim, Receipt
 
 TAG_PATTERN = re.compile(r"\[([RT]\d+)\]")
-_SENTENCE_SPLIT = re.compile(r"(?<=[.!?])\s+(?=[A-Z0-9\"'(\[])")
+SENTENCE_BOUNDARY = re.compile(r"(?<=[.!?])\s+(?=[A-Z0-9\"'(\[])")
+"""Whitespace between two sentences. Shared with the streaming surface."""
 
 # Sentences that carry no factual load and so need no receipt. Kept short: when
 # in doubt a sentence counts as factual and has to be cited.
@@ -46,7 +47,7 @@ def split_sentences(text: str) -> list[str]:
     cleaned = " ".join(text.split())
     if not cleaned:
         return []
-    return [s.strip() for s in _SENTENCE_SPLIT.split(cleaned) if s.strip()]
+    return [s.strip() for s in SENTENCE_BOUNDARY.split(cleaned) if s.strip()]
 
 
 def looks_factual(sentence: str) -> bool:

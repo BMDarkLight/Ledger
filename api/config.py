@@ -14,6 +14,9 @@ class Settings(BaseSettings):
     llm_base_url: str = "https://api.openai.com/v1"
     llm_model: str = "gpt-4o-mini"
     llm_timeout: float = 60.0
+    # The model the eval's faithfulness judge uses. Blank means LLM_MODEL, which
+    # has a model grading its own answers; a different model is the safer choice.
+    judge_model: str = ""
 
     # Embeddings. fastembed runs these locally via ONNX, with no API key, which
     # is what lets CI grade retrieval on every pull request.

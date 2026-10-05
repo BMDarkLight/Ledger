@@ -26,6 +26,7 @@ from api.schemas import AnswerStatus, AskRequest, ReceiptedAskResponse, RouteDec
 from api.services import router as routing
 from api.services.receipts import strip_tags
 from api.services.synthesis import SynthesisError
+from eval import judge
 from eval.golden_set import Behavior, Case, load_golden_set
 from eval.metrics import CaseResult, Scorecard, recall_at_k
 
@@ -188,8 +189,34 @@ def _answer_case(
         answer = run_pipeline(AskRequest(question=case.question), settings, decision)
     except (RetrievalUnavailable, SynthesisError, ToolError, NotImplementedError) as exc:
         result.error = result.error or f"{type(exc).__name__}: {exc}"
-    else:
-        _grade_answer(case, result, answer)
+        return
+
+    _grade_answer(case, result, answer)
+    if answer.status is not AnswerStatus.REFUSED:
+        _judge_answer(result, answer, settings)
+
+
+def _judge_answer(result: CaseResult, answer: ReceiptedAskResponse, settings: Settings) -> None:
+    """Ask the judge whether each cited receipt supports its claim.
+
+    A judge that cannot be reached or gives no usable verdict leaves the case
+    unmeasured. That is not the answer's fault, so it is not scored as one.
+    """
+    try:
+        verdicts = judge.judge(answer.claims, answer.receipts, settings)
+    except SynthesisError:
+        return
+    if verdicts is None:
+        return
+
+    result.faithfulness = judge.faithfulness(verdicts)
+    unsupported = [v for v in verdicts if not v.supported]
+    if unsupported and result.error is None:
+        first = unsupported[0]
+        result.error = (
+            f"{len(unsupported)} cited claim(s) not supported by their receipts, "
+            f"e.g. {first.claim!r} ({first.reason})"
+        )
 
 
 def run(mode: str, settings: Settings, cases: list[Case] | None = None) -> Scorecard:

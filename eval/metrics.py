@@ -72,6 +72,10 @@ class CaseResult:
     substrings_hit: float | None = None
     """Share of the case's `answer_contains` strings found in the answer."""
 
+    faithfulness: float | None = None
+    """Share of cited claims a judge found supported by the receipts they cite.
+    None when nothing was cited, or the judge gave no usable verdict."""
+
     error: str | None = None
 
 
@@ -131,6 +135,11 @@ class Scorecard:
         return mean_or_none([r.substrings_hit for r in self.results])
 
     @property
+    def faithfulness(self) -> float | None:
+        """Whether cited receipts back their claims, which coverage cannot see."""
+        return mean_or_none([r.faithfulness for r in self.results])
+
+    @property
     def cases_errored(self) -> int:
         return sum(1 for r in self.results if r.error and r.routed_correctly)
 
@@ -168,6 +177,7 @@ class Scorecard:
             f"| Recall after rerank | {_pct(self.recall_after_rerank)} |",
             f"| Citation coverage | {_pct(self.citation_coverage)} |",
             f"| Expected answer match | {_pct(self.answer_match)} |",
+            f"| Faithfulness (judged) | {_pct(self.faithfulness)} |",
             "",
             "## Routing accuracy by category",
             "",

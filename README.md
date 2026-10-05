@@ -131,6 +131,10 @@ Each run reports:
 - **Expected answer match**, the share of each case's required strings that
   turned up in the prose. Coverage says every claim was cited; this says the
   question got answered
+- **Faithfulness**, the share of cited claims that an LLM judge, shown only the
+  receipts each claim cites, finds supported by them. Coverage checks that a tag
+  is there; this checks that the receipt behind it says what the claim says.
+  Set `JUDGE_MODEL` so a different model grades the answers
 
 Results are written to `eval/scorecard.md` and committed by CI, so the badge and
 the numbers stay attached to a real run.
@@ -210,7 +214,7 @@ The harness picks the richest mode the environment supports and writes
 |---|---|---|
 | `routing` | nothing | routing, tool selection |
 | `retrieval` | the corpus on disk | the above, plus recall@k before and after reranking |
-| `full` | `LLM_API_KEY` | the above, plus citation coverage, expected answer match, and refusals as they actually happened rather than as the route implied |
+| `full` | `LLM_API_KEY` | the above, plus citation coverage, expected answer match, judged faithfulness, and refusals as they actually happened rather than as the route implied |
 
 Embeddings run locally, so CI reaches `retrieval` mode with no secrets. The
 retrieval numbers are produced on every pull request, not just on `main`.
@@ -288,8 +292,9 @@ Not measured yet: whether the model-backed router beats the baseline. Run
 baseline's score is fitted to the golden set; the model router's prompt contains
 none of it.
 
-Not built yet: faithfulness scoring by an LLM judge. Citation coverage measures
-whether a claim carries a receipt, not yet whether the receipt supports it.
+The faithfulness judge is a model grading a model, so its number is a
+measurement with error bars rather than a guarantee. It runs in the eval only,
+not on every request.
 
 ---
 
@@ -305,7 +310,8 @@ whether a claim carries a receipt, not yet whether the receipt supports it.
       refusals as they happen
 - [x] **Phase 4** Multi-hop chaining, where the tool argument is written from
       the retrieved evidence
-- [ ] **Phase 5** Streaming, faithfulness judging, optional live demo
+- [ ] **Phase 5** ~~Streaming~~, ~~faithfulness judging~~ (both done), optional
+      live demo
 
 ---
 

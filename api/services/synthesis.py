@@ -34,6 +34,10 @@ the question and the evidence below do not determine an input.
 For the calculator, the input must be an arithmetic expression built only from
 digits, parentheses and the operators + - * / % **. Substitute any figure you
 need from the evidence, so that the expression contains no words.
+
+For code_exec, the input is one line of Python whose value is the answer, such
+as math.sqrt(1764). The math module is already imported. Separate statements
+with semicolons and print the result if one expression is not enough.
 """
 
 INSUFFICIENT = "INSUFFICIENT_EVIDENCE"

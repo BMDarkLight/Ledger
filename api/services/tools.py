@@ -8,6 +8,9 @@ that cites nothing is not an answer.
 import ast
 import operator
 import re
+import subprocess
+import sys
+import tempfile
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -79,6 +82,8 @@ def argument_for(name: str, question: str) -> str:
 
     Raises ToolError when the question alone does not determine an argument.
     """
+    if name == "code_exec":
+        raise ToolError("code_exec needs a snippet written for it, not the question itself")
     if name != "calculator":
         return question
     expression = extract_expression(question)
@@ -95,15 +100,85 @@ def clock(_: str, settings: Settings) -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
+# code_exec
+
+CODE_EXEC_TIMEOUT_S = 5.0
+CODE_EXEC_CPU_S = 2
+CODE_EXEC_MEMORY_BYTES = 512 * 1024 * 1024
+CODE_EXEC_MAX_OUTPUT = 2000
+
+# Runs inside the child. It lowers its own limits before reading the snippet,
+# so nothing the snippet does can raise them again: limits only go down.
+_RUNNER = """\
+import math, resource, sys
+
+def limit(kind, value):
+    try:
+        resource.setrlimit(kind, (value, value))
+    except (ValueError, OSError):
+        pass  # not every platform enforces every limit
+
+limit(resource.RLIMIT_CPU, {cpu})
+limit(resource.RLIMIT_AS, {memory})
+limit(resource.RLIMIT_FSIZE, 0)
+limit(resource.RLIMIT_NPROC, 0)
+
+code = sys.stdin.read()
+namespace = {{"math": math, "__name__": "__snippet__"}}
+try:
+    compiled = compile(code, "<snippet>", "eval")
+except SyntaxError:
+    exec(compile(code, "<snippet>", "exec"), namespace)
+else:
+    print(eval(compiled, namespace))
+"""
+
+
+def code_exec(code: str, settings: Settings) -> str:
+    """Run a short Python snippet in a separate, resource-limited process.
+
+    An expression prints its value; statements report whatever they print. The
+    child runs isolated from the user's site-packages, with an empty environment
+    (so no API keys), in a throwaway directory, with limits on CPU time, memory,
+    file writes and process creation, and a wall-clock timeout.
+
+    This is containment, not a security boundary: the child can still open
+    network connections and read files the server user can read. Run Ledger in
+    a container if snippets can come from untrusted users.
+    """
+    runner = _RUNNER.format(cpu=CODE_EXEC_CPU_S, memory=CODE_EXEC_MEMORY_BYTES)
+    with tempfile.TemporaryDirectory(prefix="ledger-exec-") as workdir:
+        try:
+            done = subprocess.run(
+                [sys.executable, "-I", "-S", "-c", runner],
+                input=code,
+                capture_output=True,
+                text=True,
+                timeout=CODE_EXEC_TIMEOUT_S,
+                cwd=workdir,
+                env={},
+            )
+        except subprocess.TimeoutExpired as exc:
+            raise ToolError(f"snippet ran out of time after {CODE_EXEC_TIMEOUT_S:g}s") from exc
+
+    if done.returncode != 0:
+        lines = done.stderr.strip().splitlines()
+        reason = lines[-1] if lines else f"exited with status {done.returncode}"
+        if done.returncode < 0:
+            reason = f"killed by signal {-done.returncode} (likely a CPU or memory limit)"
+        raise ToolError(f"snippet failed: {reason}")
+
+    output = done.stdout.strip()
+    if len(output) > CODE_EXEC_MAX_OUTPUT:
+        output = output[:CODE_EXEC_MAX_OUTPUT] + " [truncated]"
+    return output
+
+
 # not yet built
 
 
 def web_search(query: str, settings: Settings) -> str:
     raise NotImplementedError("Phase 2: web search backend.")
-
-
-def code_exec(code: str, settings: Settings) -> str:
-    raise NotImplementedError("Phase 2: sandboxed code execution.")
 
 
 REGISTRY: dict[str, Tool] = {
@@ -117,7 +192,11 @@ REGISTRY: dict[str, Tool] = {
             web_search,
             requires="web_search_api_key",
         ),
-        Tool("code_exec", "Run a short Python snippet in a sandbox.", code_exec),
+        Tool(
+            "code_exec",
+            "Run one line of Python in a sandbox, for maths the calculator lacks.",
+            code_exec,
+        ),
     )
 }
 

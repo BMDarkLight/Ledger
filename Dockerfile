@@ -11,6 +11,11 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY api/ api/
 COPY eval/ eval/
 
+# Not root: the code_exec sandbox caps process creation with RLIMIT_NPROC,
+# which Linux does not enforce for root.
+RUN useradd --create-home --uid 10001 ledger
+USER ledger
+
 EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=3s --start-period=10s \
     CMD python -c "import httpx,sys; sys.exit(0 if httpx.get('http://localhost:8000/health').status_code==200 else 1)"

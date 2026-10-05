@@ -116,3 +116,16 @@ def test_arithmetic_already_in_the_question_needs_no_planning_call(model, config
     assert result.status is AnswerStatus.VERIFIED
     assert result.receipts[0].snippet == "5996713"
     assert not model, "only the synthesis call should have been made"
+
+
+def test_maths_beyond_the_calculator_runs_a_planned_snippet(model, configured):
+    """The T006 path: routed to code_exec, the planner writes the Python, the
+    sandbox runs it, and the answer cites the sandbox's output."""
+    model.append("math.sqrt(1764)")
+    model.append("The square root of 1764 is 42 [T1].")
+    result = run_pipeline(AskRequest(question="What is the square root of 1764?"), configured)
+
+    assert result.status is AnswerStatus.VERIFIED
+    (receipt,) = result.receipts
+    assert (receipt.source, receipt.snippet) == ("code_exec", "42.0")
+    assert receipt.metadata["argument"] == "math.sqrt(1764)"
